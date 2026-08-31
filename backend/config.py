@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -6,6 +7,32 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY", "brandora-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+TOKEN_EXPIRE_DAYS = 7
+
+# Password-reset tokens are short-lived (15 minutes) to limit abuse window.
+RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "15"))
+
+# MongoDB (users + SaaS activity history)
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
+MONGO_DB = os.getenv("MONGO_DB", "brandora")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Administrator account that can manually approve Pro activations.
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "meveryx@gmail.com").strip().lower()
+
+# SMTP for password-recovery emails (Gmail by default)
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+# Accept both common env-var naming conventions for the credentials.
+# .strip() guards against stray spaces (e.g. an app password pasted with
+# spaces) that would otherwise cause Gmail to reject authentication.
+SMTP_USER = (os.getenv("SMTP_USER", "") or os.getenv("SMTP_USERNAME", "")).strip()
+SMTP_PASS = (os.getenv("SMTP_PASS", "") or os.getenv("SMTP_PASSWORD", "")).strip()
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER).strip()
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 FACEBOOK_CLIENT_ID = os.getenv("FACEBOOK_CLIENT_ID", "")
 FACEBOOK_CLIENT_SECRET = os.getenv("FACEBOOK_CLIENT_SECRET", "")

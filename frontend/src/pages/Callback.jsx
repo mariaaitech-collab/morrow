@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
+import { useLanguage } from '../i18n/LanguageContext';
 
 function Callback() {
   const { platform } = useParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState('Processing...');
+  const { t } = useLanguage();
+  const [status, setStatus] = useState(t('callback.connecting'));
   const hasRun = useRef(false);
 
   useEffect(() => {
@@ -21,16 +23,16 @@ function Callback() {
 
     if (error) {
       console.error(`[CALLBACK] OAuth error from ${platform}:`, error);
-      toast.error(`OAuth error from ${platform}: ${error}`);
-      setStatus(`Authorization failed: ${error}`);
+      toast.error(t('callback.errorBody'));
+      setStatus(t('callback.errorBody'));
       setTimeout(() => navigate('/'), 3000);
       return;
     }
 
     if (!code) {
       console.error(`[CALLBACK] No authorization code received for ${platform}`);
-      toast.error(`No authorization code received from ${platform}`);
-      setStatus('No authorization code received');
+      toast.error(t('callback.errorBody'));
+      setStatus(t('callback.errorBody'));
       setTimeout(() => navigate('/'), 3000);
       return;
     }
@@ -42,21 +44,21 @@ function Callback() {
           params: { code },
         });
         console.log(`[CALLBACK] Backend response:`, data);
-        toast.success(`${platform} connected successfully!`);
-        setStatus(`${platform} connected as ${data.account_name}`);
+        toast.success(t('callback.successBody'));
+        setStatus(t('callback.successTitle'));
         setTimeout(() => navigate('/'), 2000);
       } catch (err) {
         console.error(`[CALLBACK] Backend callback failed:`, err);
         console.error(`[CALLBACK] Response:`, err.response?.status, err.response?.data);
-        const detail = err.response?.data?.detail || err.message || 'Failed to complete authorization';
+        const detail = err.response?.data?.detail || err.message || t('callback.errorBody');
         toast.error(detail);
-        setStatus(`Failed: ${detail}`);
+        setStatus(t('callback.errorBody'));
         setTimeout(() => navigate('/'), 3000);
       }
     };
 
     exchangeCode();
-  }, [platform, navigate]);
+  }, [platform, navigate, t]);
 
   return (
     <>
@@ -68,7 +70,7 @@ function Callback() {
           <h1>{platform?.charAt(0).toUpperCase() + platform?.slice(1)}</h1>
           <p className="subtitle" style={{ marginTop: '1rem' }}>{status}</p>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '1rem' }}>
-            You will be redirected to the dashboard shortly...
+            {t('callback.redirecting')}
           </p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Form
+from fastapi import APIRouter, HTTPException, Form, Request
 import httpx
 import json
 import time
@@ -195,6 +195,7 @@ async def _analyze_strategy(topic, flat_competitors, user_content):
 
 @router.post("/strategy")
 async def elite_strategy(
+    request: Request,
     topic: str = Form(...),
     platforms: str = Form('["linkedin","instagram","facebook"]'),
     content: str = Form(""),
@@ -234,5 +235,15 @@ async def elite_strategy(
         len(analysis.get("trending_competitors", [])),
         len(analysis.get("viral_roadmap", [])),
         result["latency_ms"],
+    )
+
+    from usage import get_optional_user, record_usage
+
+    user = await get_optional_user(request)
+    await record_usage(
+        user,
+        "competitive_analysis",
+        "Ran a Competitive Analysis",
+        f"Topic: {topic.strip()[:90]}",
     )
     return result

@@ -1,4 +1,16 @@
 import axios from 'axios';
+import { clearAuth } from '../auth';
+import { translations, DEFAULT_LANGUAGE } from '../i18n/translations';
+
+function tr(key) {
+  try {
+    const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('brandora_lang')) || DEFAULT_LANGUAGE;
+    const lookup = (obj, k) => k.split('.').reduce((o, p) => (o && o[p] != null ? o[p] : undefined), obj);
+    return lookup(translations[lang], key) || lookup(translations[DEFAULT_LANGUAGE], key) || key;
+  } catch {
+    return key;
+  }
+}
 
 const api = axios.create({
   baseURL: '/api',
@@ -21,11 +33,25 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error(`[AXIOS] ERROR:`, error.code, error.response?.status, error.message);
+    if (error.response?.status === 401) {
+      // Session is invalid/expired: clear local credentials and send the
+      // user back to login instead of leaving a silently broken UI.
+      clearAuth();
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+      return Promise.reject(new Error(tr('auth.sessionExpired')));
+    }
+    if (error.response?.status === 402) {
+      window.dispatchEvent(new CustomEvent('brandora:upgrade-required'));
+      return Promise.reject(new Error(tr('auth.upgradeRequired')));
+    }
     if (error.response?.status === 503 || error.code === 'ECONNABORTED') {
-      return Promise.reject(new Error('Brandora backend (http://localhost:8000) is not running. Start it first, then try again.'));
+      return Promise.reject(new Error(tr('auth.backendDown')));
     }
     return Promise.reject(error);
   }
 );
 
 export default api;
+

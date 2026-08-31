@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Response
 from typing import Optional
 from urllib.parse import urlparse
 import httpx
@@ -16,6 +16,8 @@ from config import (
     CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET,
 )
 from routers.social import connected_accounts
+from usage import get_optional_user, record_usage
+from deps import require_subscription
 
 router = APIRouter(prefix="/api/content", tags=["content"])
 
@@ -140,11 +142,16 @@ CRITICAL RULES:
 
 @router.post("/generate")
 async def generate_content(
+    request: Request,
+    user: dict = Depends(require_subscription),
     topic: str = Form(...),
     tone: str = Form("professional"),
 ):
     print(f"[CONTENT] Generating unified post for topic='{topic}', tone={tone}")
     content = await _generate_post_content(topic, tone)
+
+    await record_usage(user, "content_generation", "Generated an AI caption", f"Topic: {topic.strip()[:90]}")
+
     return {
         "topic": topic,
         "tone": tone,
@@ -387,6 +394,7 @@ async def _analyze_competitive(topic, competitors, user_content):
 
 @router.post("/competitive-analysis")
 async def competitive_analysis(
+    user: dict = Depends(require_subscription),
     topic: str = Form(...),
     platforms: str = Form('["linkedin","instagram","facebook"]'),
     content: str = Form(""),
@@ -464,6 +472,8 @@ async def _generate_pollinations_image(prompt: str, width: int, height: int, mod
 
 @router.post("/generate-image")
 async def generate_image(
+    request: Request,
+    user: dict = Depends(require_subscription),
     prompt: str = Form(...),
     mode: str = Form("free"),
     width: int = Form(1080),
@@ -489,6 +499,9 @@ async def generate_image(
 
     ext = "png" if "png" in mime_type else "jpg"
     filename = f"ai_generated_{provider}_{int(time.time() * 1000)}.{ext}"
+
+    mode_label = "Pro (Premium)" if mode == "pro" else "Free"
+    await record_usage(user, "image_generation", "Generated an AI image", f"{mode_label} · {prompt.strip()[:90]}")
 
     return Response(
         content=image_bytes,
@@ -555,6 +568,7 @@ def _detect_media_type(filename: str, content_type: str) -> str:
 
 @router.post("/publish")
 async def publish_content(
+    user: dict = Depends(require_subscription),
     content: str = Form(...),
     platforms: str = Form(...),
     media: Optional[UploadFile] = File(None),

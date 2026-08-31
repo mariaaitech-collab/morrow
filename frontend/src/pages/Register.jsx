@@ -1,56 +1,89 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
+import SEO from '../components/SEO';
+import { useLanguage } from '../i18n/LanguageContext';
+import { AuthShell } from './Login';
 
-function Register({ onAuth }) {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function Register() {
+  const navigate = useNavigate();
+  const { t } = useLanguage();
+  const [form, setForm] = useState({ username: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.username.trim()) {
+      toast.error(t('auth.nameRequired'));
+      return;
+    }
+    if (form.password.length < 6) {
+      toast.error(t('auth.pwShort'));
+      return;
+    }
+    if (form.password !== form.confirm) {
+      toast.error(t('auth.pwMismatch'));
+      return;
+    }
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/register', { username, email, password });
+      const { data } = await api.post('/auth/register', {
+        username: form.username.trim(),
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+      });
       localStorage.setItem('brandora_token', data.access_token);
-      localStorage.setItem('brandora_user', JSON.stringify({ username: data.username, email }));
-      onAuth({ username: data.username, email });
-      toast.success(`Welcome, ${data.username}!`);
+      localStorage.setItem('brandora_user', JSON.stringify({ username: data.username, email: form.email, is_admin: !!data.is_admin }));
+      toast.success(t('auth.welcomeRegister', { username: data.username }));
+      navigate('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Registration failed');
+      toast.error(err.response?.data?.detail || t('auth.registrationFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>Brandora</h1>
-        <p className="subtitle">Create your account</p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Username</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="johndoe" required />
-          </div>
-          <div className="form-group">
-            <label>Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
-          </div>
-          <div className="form-group">
-            <label>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
-          </div>
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Creating account...' : 'Create Account'}
-          </button>
-        </form>
-        <p className="switch-text">Already have an account? <Link to="/login">Sign in</Link></p>
-      </div>
-    </div>
+    <>
+    <SEO
+      title="Start Free Trial | BrandAura — AI Social Media Manager"
+      description="Create your free BrandAura account and try the AI social media manager: generate content, build a content calendar and auto-schedule posts across channels."
+      path="/register"
+    />
+    <AuthShell
+      title={t('auth.registerTitle')}
+      sub={t('auth.registerSub')}
+      alt={<>{t('auth.haveAccount')} <Link to="/login">{t('auth.loginBtn')}</Link></>}
+    >
+      <form onSubmit={handleSubmit}>
+        <div className="auth-field">
+          <input className="auth-input" type="text" value={form.username} onChange={set('username')} placeholder=" " required />
+          <label className="auth-label">{t('auth.fullName')}</label>
+          <div className="auth-input-border" />
+        </div>
+        <div className="auth-field">
+          <input className="auth-input" type="email" value={form.email} onChange={set('email')} placeholder=" " required />
+          <label className="auth-label">{t('auth.email')}</label>
+          <div className="auth-input-border" />
+        </div>
+        <div className="auth-field">
+          <input className="auth-input" type="password" value={form.password} onChange={set('password')} placeholder=" " required />
+          <label className="auth-label">{t('auth.password')}</label>
+          <div className="auth-input-border" />
+        </div>
+        <div className="auth-field">
+          <input className="auth-input" type="password" value={form.confirm} onChange={set('confirm')} placeholder=" " required />
+          <label className="auth-label">{t('auth.confirmPassword')}</label>
+          <div className="auth-input-border" />
+        </div>
+        <button className="auth-submit" type="submit" disabled={loading}>
+          {loading ? <><span className="spinner-sm" /> {t('common.loading')}</> : t('auth.registerBtn')}
+        </button>
+      </form>
+    </AuthShell>
+    </>
   );
 }
-
-export default Register;

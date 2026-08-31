@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+
+# Public pages — crawl freely
+Allow: /about
+Allow: /login
+Allow: /register
+Allow: /forgot-password
+Allow: /privacy
+Allow: /terms
+
+# Private, app-only views — keep out of Google Search
+Disallow: /dashboard/
+Disallow: /scheduler/
+Disallow: /calendar/
+Disallow: /history/
+Disallow: /admin/
+Disallow: /app/
+Disallow: /account/
+Disallow: /auth/
+Disallow: /api/
+
+Sitemap: https://brandaura.meveryx.com/sitemap.xml

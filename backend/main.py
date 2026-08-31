@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import db
-from routers import auth, content, schedule, social, strategy
+import mongodb
+from config import SECRET_KEY
+from routers import auth, content, schedule, social, strategy, user, billing
 from routers.schedule import scan_due_posts
 
 scheduler = AsyncIOScheduler()
@@ -14,6 +16,14 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    print("[DB] SQLite database ready (scheduled posts)")
+
+    if await mongodb.mongo_ok():
+        await mongodb.init_mongo()
+        await mongodb.fix_missing_trials()
+        print("[DB] MongoDB connected (users + activity history)")
+    else:
+        print("[DB] WARNING: MongoDB unreachable — auth/history will be unavailable")
 
     scheduler.add_job(
         scan_due_posts,
@@ -34,7 +44,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Brandora Social Media Integration",
+    title="BrandAura Social Media Integration",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -52,11 +62,24 @@ app.include_router(social.router)
 app.include_router(content.router)
 app.include_router(strategy.router)
 app.include_router(schedule.router)
+app.include_router(user.router)
+app.include_router(billing.router)
+app.include_router(billing.admin_router)
 
 
 @app.get("/")
 def root():
-    return {"message": "Brandora API is running", "version": "1.0.0"}
+    return {"message": "BrandAura API is running", "version": "1.0.0"}
+
+
+@app.on_event("startup")
+def _security_check():
+    # Fail loud (but keep running) if a hard-coded default secret is in use.
+    if SECRET_KEY in ("brandora-secret-key-change-in-production", ""):
+        print(
+            "SECURITY WARNING: SECRET_KEY is using the insecure default. "
+            "Set a strong SECRET_KEY via the environment (.env) before deploying."
+        )
 
 
 @app.get("/api/health")

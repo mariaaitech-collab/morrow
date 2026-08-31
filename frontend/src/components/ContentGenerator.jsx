@@ -1,28 +1,36 @@
 import { useState, useRef } from 'react';
 import toast from 'react-hot-toast';
+import { FaFacebookF, FaLinkedinIn, FaInstagram } from 'react-icons/fa';
 import api from '../api/axios';
 import CropModal from './CropModal';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const TONES = [
-  { value: 'viral', label: 'Trending / Viral', icon: '🔥' },
-  { value: 'professional', label: 'Professional', icon: '💼' },
-  { value: 'educational', label: 'Educational', icon: '📚' },
-  { value: 'promotional', label: 'Promotional', icon: '🎯' },
+  { value: 'viral', icon: '🔥' },
+  { value: 'professional', icon: '💼' },
+  { value: 'educational', icon: '📚' },
+  { value: 'promotional', icon: '🎯' },
 ];
 
 const PLATFORMS = [
-  { value: 'facebook', label: 'Facebook', icon: 'f', color: '#1877f2' },
-  { value: 'linkedin', label: 'LinkedIn', icon: 'in', color: '#0a66c2' },
-  { value: 'instagram', label: 'Instagram', icon: 'ig', color: '#dc2743' },
+  { value: 'facebook', label: 'Facebook', icon: <FaFacebookF />, color: '#1877f2' },
+  { value: 'linkedin', label: 'LinkedIn', icon: <FaLinkedinIn />, color: '#0a66c2' },
+  { value: 'instagram', label: 'Instagram', icon: <FaInstagram />, color: '#dc2743' },
 ];
 
+const PREMIUM_BTN =
+  'bg-gradient-to-r from-fuchsia-400/10 to-fuchsia-400/10 text-fuchsia-100 border border-fuchsia-500/30 transition-all duration-200 ease-out hover:from-fuchsia-400/20 hover:to-fuchsia-400/20 hover:border-fuchsia-400/50 hover:shadow-[0_0_22px_rgba(45,212,191,0.25)] active:scale-95';
+const SUCCESS_BTN =
+  'bg-gradient-to-r from-emerald-400/10 to-fuchsia-400/10 text-emerald-100 border border-emerald-400/30 transition-all duration-200 ease-out hover:from-emerald-400/20 hover:to-fuchsia-400/20 hover:border-emerald-300/50 hover:shadow-[0_0_22px_rgba(16,185,129,0.25)] active:scale-95';
+
 const PLATFORM_META = {
-  linkedin: { label: 'LinkedIn', badge: 'badge-linkedin' },
-  instagram: { label: 'Instagram', badge: 'badge-instagram' },
-  facebook: { label: 'Facebook', badge: 'badge-facebook' },
+  linkedin: { badge: 'badge-linkedin' },
+  instagram: { badge: 'badge-instagram' },
+  facebook: { badge: 'badge-facebook' },
 };
 
 function ContentGenerator({ accounts }) {
+  const { t } = useLanguage();
   const [topic, setTopic] = useState('');
   const [tone, setTone] = useState('professional');
   const [selectedPlatforms, setSelectedPlatforms] = useState(['facebook', 'linkedin', 'instagram']);
@@ -74,7 +82,7 @@ function ContentGenerator({ accounts }) {
       setMediaFile(file);
       setMediaPreview(url);
       setMediaType('video');
-      toast.success(`Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
+      toast.success(t('contentGenerator.selectedFile', { name: file.name, size: (file.size / (1024 * 1024)).toFixed(1) }));
     } else {
       setMediaPreview(null);
       setMediaType(null);
@@ -88,7 +96,7 @@ function ContentGenerator({ accounts }) {
     setMediaPreview(url);
     setMediaType('image');
     setCropModal(null);
-    toast.success(`Cropped: ${blob.name} (${(blob.size / (1024 * 1024)).toFixed(1)}MB)`);
+    toast.success(t('contentGenerator.croppedFile', { name: blob.name, size: (blob.size / (1024 * 1024)).toFixed(1) }));
   };
 
   const handleCancelCrop = () => {
@@ -106,7 +114,7 @@ function ContentGenerator({ accounts }) {
 
   const handleGenerate = async () => {
     if (!topic.trim()) {
-      toast.error('Please enter a topic');
+      toast.error(t('contentGenerator.pleaseTopic'));
       return;
     }
     setLoading(true);
@@ -118,9 +126,9 @@ function ContentGenerator({ accounts }) {
       formData.append('tone', tone);
       const { data } = await api.post('/content/generate', formData);
       setContent(data);
-      toast.success('Content generated!');
+      toast.success(t('contentGenerator.contentGenerated'));
     } catch (err) {
-      const detail = err.response?.data?.detail || err.message || 'Generation failed';
+      const detail = err.response?.data?.detail || err.message || t('contentGenerator.optimizeError');
       toast.error(detail);
     } finally {
       setLoading(false);
@@ -139,10 +147,10 @@ function ContentGenerator({ accounts }) {
       formData.append('content', `${content.title}\n\n${content.body}`);
       const { data } = await api.post('/strategy', formData, { timeout: 300000 });
       setStrategyData(data);
-      toast.success('Elite strategy ready! 9 trending competitors analyzed and your viral roadmap built.');
+      toast.success(t('contentGenerator.eliteStrategyReady'));
     } catch (err) {
-      const detail = err.response?.data?.detail || err.message || 'Analysis failed';
-      const msg = typeof detail === 'string' ? detail : 'Analysis failed';
+      const detail = err.response?.data?.detail || err.message || t('contentGenerator.analysisFailed');
+      const msg = typeof detail === 'string' ? detail : t('contentGenerator.analysisFailed');
       setCompetitorError(msg);
       toast.error(msg);
     } finally {
@@ -152,12 +160,12 @@ function ContentGenerator({ accounts }) {
 
   const handleGenerateImage = async (mode) => {
     if (!imagePrompt.trim()) {
-      toast.error('Please describe the image you want to create');
+      toast.error(t('contentGenerator.describeImage'));
       return;
     }
     if (mode === 'pro' && proTrialCount >= 2) {
       setImageQuotaExceeded(true);
-      toast.error('Pro limits reached. This is a paid feature. Please use the Free generator.', { duration: 6000 });
+      toast.error(t('contentGenerator.proLimitReached'), { duration: 6000 });
       return;
     }
     setImageQuotaExceeded(false);
@@ -184,9 +192,9 @@ function ContentGenerator({ accounts }) {
         const nextCount = proTrialCount + 1;
         setProTrialCount(nextCount);
         localStorage.setItem('proTrialCount', String(nextCount));
-        toast.success(`Premium Image Generated (Trial ${nextCount} of 2 used)`);
+        toast.success(t('contentGenerator.proImageGenerated', { count: nextCount }));
       } else {
-        toast.success('Free AI image generated and attached!');
+        toast.success(t('contentGenerator.freeImageGenerated'));
       }
     } catch (err) {
       let realMessage = null;
@@ -213,8 +221,8 @@ function ContentGenerator({ accounts }) {
 
       const detail = realMessage
         || err.response?.data?.detail
-        || (err.code === 'ECONNABORTED' ? 'Image generation timed out. Try again.' : 'Image generation failed');
-      toast.error(typeof detail === 'string' ? detail : 'Image generation failed');
+        || (err.code === 'ECONNABORTED' ? t('contentGenerator.imageTimeout') : t('contentGenerator.imageFailed'));
+      toast.error(typeof detail === 'string' ? detail : t('contentGenerator.imageFailed'));
     } finally {
       setImageGenerating(false);
     }
@@ -224,7 +232,7 @@ function ContentGenerator({ accounts }) {
     if (!content) return;
     const toPublish = selectedPlatforms.filter((p) => connectedPlatforms.includes(p));
     if (toPublish.length === 0) {
-      toast.error('None of the selected platforms are connected');
+      toast.error(t('contentGenerator.selectedConnected'));
       return;
     }
     setPublishing(true);
@@ -243,13 +251,13 @@ function ContentGenerator({ accounts }) {
         setPublishResults(data.results);
         const ok = Object.entries(data.results).filter(([, r]) => r.status === 'success');
         const fail = Object.entries(data.results).filter(([, r]) => r.status !== 'success');
-        if (ok.length > 0) toast.success(`Published to ${ok.map(([p]) => p).join(', ')}!`);
-        fail.forEach(([p, r]) => toast.error(`${p}: ${r.message}`));
+        if (ok.length > 0) toast.success(t('contentGenerator.publishSuccess', { platforms: ok.map(([p]) => p).join(', ') }));
+        fail.forEach(([p, r]) => toast.error(t('contentGenerator.platformError', { platform: p, message: r.message })));
       }
     } catch (err) {
       const detail = err.response?.data?.detail || (err.code === 'ECONNABORTED'
-        ? 'Publishing timed out. Please check your social accounts and try again.'
-        : 'Publish failed');
+        ? t('contentGenerator.publishTimeout')
+        : t('contentGenerator.publishFailed'));
       toast.error(detail);
     } finally {
       setPublishing(false);
@@ -271,15 +279,15 @@ function ContentGenerator({ accounts }) {
 
   return (
     <div className="content-generator">
-      <h3>Content Studio</h3>
+      <h3>{t('contentGenerator.title')}</h3>
 
       <div className="gen-form">
         <div className="form-group">
-          <label>Topic</label>
+          <label>{t('contentGenerator.topicLabel')}</label>
           <textarea
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="Enter your topic — e.g., 'The future of remote work in 2026', 'How AI is transforming customer service', 'Summer flash sale announcement'"
+            placeholder={t('contentGenerator.topicPlaceholder')}
             rows={3}
             disabled={loading}
           />
@@ -287,24 +295,24 @@ function ContentGenerator({ accounts }) {
 
         <div className="form-row">
           <div className="form-group">
-            <label>Tone & Style</label>
+            <label>{t('contentGenerator.toneLabel')}</label>
             <div className="tone-selector">
-              {TONES.map((t) => (
+              {TONES.map((tt) => (
                 <button
-                  key={t.value}
-                  className={`tone-btn ${tone === t.value ? 'active' : ''}`}
-                  onClick={() => setTone(t.value)}
+                  key={tt.value}
+                  className={`tone-btn ${tone === tt.value ? 'active' : ''}`}
+                  onClick={() => setTone(tt.value)}
                   disabled={loading}
                 >
-                  <span className="tone-icon">{t.icon}</span>
-                  <span className="tone-label">{t.label}</span>
+                  <span className="tone-icon">{tt.icon}</span>
+                  <span className="tone-label">{t('contentGenerator.tone' + tt.value.charAt(0).toUpperCase() + tt.value.slice(1))}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div className="form-group">
-            <label>Platforms</label>
+            <label>{t('contentGenerator.platformsLabel')}</label>
             <div className="platform-selector">
               {PLATFORMS.map((p) => (
                 <button
@@ -323,11 +331,11 @@ function ContentGenerator({ accounts }) {
           </div>
         </div>
 
-        <button className="btn btn-primary btn-generate" onClick={handleGenerate} disabled={loading || !topic.trim()}>
+        <button className={"btn btn-generate " + PREMIUM_BTN} onClick={handleGenerate} disabled={loading || !topic.trim()}>
           {loading ? (
-            <><span className="spinner-sm" /> Generating with AI...</>
+            <><span className="spinner-sm" /> {t('contentGenerator.generating')}</>
           ) : (
-            'Generate Content'
+            t('contentGenerator.generateBtn')
           )}
         </button>
       </div>
@@ -336,8 +344,8 @@ function ContentGenerator({ accounts }) {
         <div className="generating-indicator">
           <div className="spinner" />
           <div>
-            <div className="gen-title">Crafting your {tone} content...</div>
-            <div className="gen-sub">AI is optimizing for all platforms</div>
+            <div className="gen-title">{t('contentGenerator.genTitle', { tone })}</div>
+            <div className="gen-sub">{t('contentGenerator.genSub')}</div>
           </div>
         </div>
       )}
@@ -354,23 +362,21 @@ function ContentGenerator({ accounts }) {
 
           <div className="competitor-section">
             <div className="competitor-section-header">
-              <h5 className="competitor-section-title">Elite Competitive Analysis &amp; Smart Strategy</h5>
+              <h5 className="competitor-section-title">{t('contentGenerator.eliteAnalysisTitle')}</h5>
               <button
-                className="btn btn-primary"
+                className={"btn " + PREMIUM_BTN}
                 onClick={handleCompetitiveAnalysis}
                 disabled={competitorLoading}
               >
                 {competitorLoading ? (
-                  <><span className="spinner-sm" /> Scanning 9 viral creators &amp; building your strategy...</>
+                  <><span className="spinner-sm" /> {t('contentGenerator.scanning')}</>
                 ) : (
-                  'Generate Elite Competitive Analysis'
+                  t('contentGenerator.generateEliteBtn')
                 )}
               </button>
             </div>
             <p className="competitor-section-hint">
-              Scans 9 trending creators winning with similar content across LinkedIn, Instagram and Facebook,
-              tears down their weaknesses, upgrades your generated caption, and hands you a day-by-day viral
-              deployment roadmap.
+              {t('contentGenerator.eliteHint')}
             </p>
 
             {competitorError && <div className="competitor-error">{competitorError}</div>}
@@ -378,18 +384,20 @@ function ContentGenerator({ accounts }) {
             {strategyData && (
               <div className="strategy-results">
                 <div className="strategy-providers">
-                  <span className="live-chip">● LIVE</span>
-                  Market scanned via {strategyData.providers?.search || 'Tavily'} · Analyzed with{' '}
-                  {strategyData.providers?.analysis?.model || 'Gemini'} ·{' '}
-                  {strategyData.search_meta?.total_raw_results || 0} raw results searched
+                  <span className="live-chip">{t('contentGenerator.liveChip')}</span>
+                  {t('contentGenerator.marketScanned', {
+                    search: strategyData.providers?.search || 'Tavily',
+                    model: strategyData.providers?.analysis?.model || 'Gemini',
+                    count: strategyData.search_meta?.total_raw_results || 0,
+                  })}
                 </div>
 
                 <section className="strategy-section">
                   <div className="strategy-section-head">
                     <span className="strategy-section-icon">🔥</span>
                     <div>
-                      <h5>Trending Competitors</h5>
-                      <p>9 viral creators who won with content like yours — 3 per platform on LinkedIn, Instagram and Facebook.</p>
+                      <h5>{t('contentGenerator.trendingCompetitors')}</h5>
+                      <p>{t('contentGenerator.trendingCompetitorsSub')}</p>
                     </div>
                   </div>
                   <div className="competitors-3col">
@@ -402,7 +410,7 @@ function ContentGenerator({ accounts }) {
                           </span>
                         </div>
                         {cards.length === 0 ? (
-                          <div className="column-empty">No creators found for this platform.</div>
+                          <div className="column-empty">{t('contentGenerator.noCreators')}</div>
                         ) : (
                           cards.map((c, i) => (
                             <a
@@ -412,13 +420,13 @@ function ContentGenerator({ accounts }) {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              <div className="viral-card-name">{c.name || 'Unknown creator'}</div>
+                               <div className="viral-card-name">{c.name || t('contentGenerator.unknownCreator')}</div>
                               {c.viral_hook && (
                                 <div className="viral-card-hook">
                                   <span className="q">“</span>{c.viral_hook}<span className="q">”</span>
                                 </div>
                               )}
-                              <div className="viral-card-link">Open profile ↗</div>
+                               <div className="viral-card-link">{t('contentGenerator.openProfile')}</div>
                             </a>
                           ))
                         )}
@@ -431,15 +439,15 @@ function ContentGenerator({ accounts }) {
                   <div className="strategy-section-head">
                     <span className="strategy-section-icon">🎯</span>
                     <div>
-                      <h5>Your Content Teardown</h5>
-                      <p>What your generated caption already does right — and exactly how to sharpen it into a hook machine.</p>
+                      <h5>{t('contentGenerator.yourTeardown')}</h5>
+                      <p>{t('contentGenerator.yourTeardownSub')}</p>
                     </div>
                   </div>
                   <div className="analysis-split">
                     <div className="analysis-card card-good">
-                      <h6>✓ Strengths</h6>
+                      <h6>{t('contentGenerator.strengths')}</h6>
                       {analysisStrengths.length === 0 ? (
-                        <p className="analysis-empty">No strengths returned.</p>
+                        <p className="analysis-empty">{t('contentGenerator.analysisEmpty')}</p>
                       ) : (
                         <ul className="analysis-list">
                           {analysisStrengths.map((s, i) => <li key={i}>{s}</li>)}
@@ -447,9 +455,9 @@ function ContentGenerator({ accounts }) {
                       )}
                     </div>
                     <div className="analysis-card card-warn">
-                      <h6>→ Specific Improvements</h6>
+                      <h6>{t('contentGenerator.improvements')}</h6>
                       {analysisImprovements.length === 0 ? (
-                        <p className="analysis-empty">No improvements returned.</p>
+                        <p className="analysis-empty">{t('contentGenerator.noImprovements')}</p>
                       ) : (
                         <ul className="analysis-list">
                           {analysisImprovements.map((s, i) => <li key={i}>{s}</li>)}
@@ -463,13 +471,13 @@ function ContentGenerator({ accounts }) {
                   <div className="strategy-section-head">
                     <span className="strategy-section-icon">💣</span>
                     <div>
-                      <h5>Bonus: Competitor Weaknesses</h5>
-                      <p>Where the viral creators drop the ball (weak CTAs, ignored comments, lazy repurposing) — and how you beat them.</p>
+                      <h5>{t('contentGenerator.weaknessesTitle')}</h5>
+                      <p>{t('contentGenerator.weaknessesSub')}</p>
                     </div>
                   </div>
                   <div className="bonus-list">
                     {weaknesses.length === 0 ? (
-                      <p className="analysis-empty">No weaknesses returned.</p>
+                      <p className="analysis-empty">{t('contentGenerator.noWeaknesses')}</p>
                     ) : (
                       weaknesses.map((w, i) => {
                         if (typeof w === 'string') {
@@ -479,7 +487,7 @@ function ContentGenerator({ accounts }) {
                           <div className="bonus-item" key={i}>
                             <div className="bonus-weak">✗ {w.weakness || w.title || 'Weakness'}</div>
                             {w.why_you_win && (
-                              <div className="bonus-win"><b>You win because:</b> {w.why_you_win}</div>
+                              <div className="bonus-win"><b>{t('contentGenerator.youWinBecause')}</b> {w.why_you_win}</div>
                             )}
                           </div>
                         );
@@ -492,17 +500,17 @@ function ContentGenerator({ accounts }) {
                   <div className="strategy-section-head">
                     <span className="strategy-section-icon">🗺️</span>
                     <div>
-                      <h5>Viral Roadmap</h5>
-                      <p>Deploy this strategy day-by-day. Execute, measure the results, compound.</p>
+                      <h5>{t('contentGenerator.roadmapTitle')}</h5>
+                      <p>{t('contentGenerator.roadmapSub')}</p>
                     </div>
                   </div>
                   <div className="roadmap-list">
                     {roadmap.length === 0 ? (
-                      <p className="analysis-empty">No roadmap returned.</p>
+                      <p className="analysis-empty">{t('contentGenerator.noRoadmap')}</p>
                     ) : (
                       roadmap.map((r, i) => (
                         <div className="roadmap-step" key={i}>
-                          <div className="roadmap-day">{r.day || `Step ${i + 1}`}</div>
+                          <div className="roadmap-day">{r.day || t('contentGenerator.step', { i: i + 1 })}</div>
                           <div className="roadmap-action">
                             {r.action || r.title || ''}
                             {r.platform && <span className="rm-platform">{r.platform}</span>}
@@ -520,36 +528,36 @@ function ContentGenerator({ accounts }) {
           </div>
 
           <div className="ai-image-section">
-            <h5 className="ai-image-title">AI Image Creation</h5>
+            <h5 className="ai-image-title">{t('contentGenerator.aiImageTitle')}</h5>
             <textarea
               className="ai-image-prompt"
               value={imagePrompt}
               onChange={(e) => setImagePrompt(e.target.value)}
-              placeholder="Describe the image you want to create — e.g., 'A futuristic office with holographic screens in purple tones'"
+              placeholder={t('contentGenerator.imagePromptPlaceholder')}
               rows={2}
               disabled={imageGenerating}
             />
             <div className="ai-image-methods">
               <button
-                className="btn btn-primary"
+                className={"btn " + PREMIUM_BTN}
                 onClick={() => handleGenerateImage('pro')}
                 disabled={imageGenerating}
               >
                 {imageGenerating && imageMode === 'pro' ? (
-                  <><span className="spinner-sm" /> Generating...</>
+                  <><span className="spinner-sm" /> {t('contentGenerator.generatingImage')}</>
                 ) : (
-                  <><span className="ai-icon">✦</span> Pro / Default Generator</>
+                  <><span className="ai-icon">✦</span> {t('contentGenerator.proGenerator')}</>
                 )}
               </button>
               <button
-                className="btn btn-success"
+                className={"btn " + SUCCESS_BTN}
                 onClick={() => handleGenerateImage('free')}
                 disabled={imageGenerating}
               >
                 {imageGenerating && imageMode === 'free' ? (
-                  <><span className="spinner-sm" /> Generating...</>
+                  <><span className="spinner-sm" /> {t('contentGenerator.generatingImage')}</>
                 ) : (
-                  <><span className="ai-icon">∞</span> Free Unlimited Generator</>
+                  <><span className="ai-icon">∞</span> {t('contentGenerator.freeGenerator')}</>
                 )}
               </button>
             </div>
@@ -557,23 +565,23 @@ function ContentGenerator({ accounts }) {
               <div className="image-loading">
                 <div className="spinner" />
                 <div>
-                  <div className="image-loading-title">Generating high-quality image...</div>
-                  <div className="image-loading-sub">(This may take up to 20 seconds)</div>
+                  <div className="image-loading-title">{t('contentGenerator.imageLoadingTitle')}</div>
+                  <div className="image-loading-sub">{t('contentGenerator.imageLoadingSub')}</div>
                 </div>
               </div>
             )}
             {imageQuotaExceeded && (
               <div className="image-quota-alert">
-                Pro limits reached. This is a paid feature. Please use the Free generator.
+                {t('contentGenerator.quotaAlert')}
               </div>
             )}
             {imageMode === 'pro' && proTrialCount < 2 && !imageGenerating && (
-              <div className="trial-hint">Pro trial: {proTrialCount} of 2 images used</div>
+              <div className="trial-hint">{t('contentGenerator.trialHint', { count: proTrialCount })}</div>
             )}
           </div>
 
           <div className="media-upload-section">
-            <label>Attach Image or Video (images open in the cropper)</label>
+            <label>{t('contentGenerator.attachMedia')}</label>
             <input
               ref={fileInputRef}
               type="file"
@@ -585,16 +593,16 @@ function ContentGenerator({ accounts }) {
             <div className="media-upload-row">
               <label htmlFor="media-upload" className="btn btn-outline btn-upload">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Browse Files
+                {t('contentGenerator.browseFiles')}
               </label>
               {mediaFile && (
-                <button className="btn btn-outline btn-sm" onClick={removeMedia}>Remove</button>
+                <button className="btn btn-outline btn-sm" onClick={removeMedia}>{t('contentGenerator.removeMedia')}</button>
               )}
             </div>
             {mediaFile && (
               <div className="media-preview">
                 {mediaType === 'image' && mediaPreview && (
-                  <img src={mediaPreview} alt="Preview" className="media-preview-img" />
+                  <img src={mediaPreview} alt={t('scheduler.previewAlt')} decoding="async" className="media-preview-img" />
                 )}
                 {mediaType === 'video' && mediaPreview && (
                   <video src={mediaPreview} controls className="media-preview-video" />
@@ -610,7 +618,7 @@ function ContentGenerator({ accounts }) {
           </div>
 
           <div className="publish-platforms-section">
-            <label>Publish to</label>
+            <label>{t('contentGenerator.publishToLabel')}</label>
             <div className="publish-platforms-row">
               {PLATFORMS.map((p) => {
                 const isSelected = selectedPlatforms.includes(p.value);
@@ -639,17 +647,17 @@ function ContentGenerator({ accounts }) {
 
           <div className="publish-actions">
             <span className="publish-info">
-              {connectedCount} of {selectedPlatforms.length} selected connected
+              {t('contentGenerator.publishInfo', { connected: connectedCount, total: selectedPlatforms.length })}
             </span>
             <button
-              className="btn btn-primary"
+              className={"btn " + PREMIUM_BTN}
               onClick={handlePublish}
               disabled={publishing || connectedCount === 0}
             >
               {publishing ? (
-                <><span className="spinner-sm" /> Publishing to Meta... This may take a minute for videos</>
+                <><span className="spinner-sm" /> {t('contentGenerator.publishing')}</>
               ) : (
-                `Publish to ${connectedCount > 0 ? connectedCount : ''} Platform${connectedCount !== 1 ? 's' : ''}`
+                t('contentGenerator.publishBtn', { count: connectedCount, plural: connectedCount !== 1 ? 's' : '' })
               )}
             </button>
           </div>
