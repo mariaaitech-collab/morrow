@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import db
 import mongodb
-from config import SECRET_KEY
+from config import CORS_ORIGINS, SECRET_KEY
 from routers import auth, content, schedule, social, strategy, user, billing
 from routers.schedule import scan_due_posts
 
@@ -51,7 +51,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=list(CORS_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

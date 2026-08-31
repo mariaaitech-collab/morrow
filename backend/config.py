@@ -18,6 +18,16 @@ MONGO_DB = os.getenv("MONGO_DB", "brandora")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+# Production deployments often run on a different domain than the local dev setup.
+# Keep localhost support for local development, but allow server-side overrides
+# via environment variables for hosted frontends/backends.
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+CORS_ORIGINS = tuple(
+    origin.strip()
+    for origin in (os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)).split(",")
+    if origin.strip()
+)
+
 # Administrator account that can manually approve Pro activations.
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "meveryx@gmail.com").strip().lower()
 
