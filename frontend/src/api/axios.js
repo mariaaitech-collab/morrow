@@ -1,6 +1,38 @@
 import axios from 'axios';
 import { clearAuth } from '../auth';
 import { translations, DEFAULT_LANGUAGE } from '../i18n/translations';
+import { isTokenSpendingRequest, refreshTokenBalance } from './tokens';
+
+// Turn ANY API error into a safe, renderable string for toasts / inline states.
+// FastAPI 422 validation errors return `detail` as an ARRAY of objects
+// (e.g. [{type, loc, msg, input, ctx}]); passing that array straight into a
+// toast crashes React ("Objects are not valid as a React child"). This always
+// extracts a plain string.
+export function extractApiError(err, fallback = 'Something went wrong. Please try again.') {
+  try {
+    if (!err) return fallback;
+    if (typeof err === 'string') return err;
+    const detail = err?.response?.data?.detail;
+    if (detail != null && detail !== '') {
+      if (typeof detail === 'string') return detail;
+      if (Array.isArray(detail)) {
+        const first = detail[0];
+        if (first && typeof first === 'object' && typeof first.msg === 'string' && first.msg) {
+          return first.msg;
+        }
+        return fallback;
+      }
+      if (typeof detail === 'object') {
+        if (typeof detail.message === 'string' && detail.message) return detail.message;
+        if (typeof detail.detail === 'string' && detail.detail) return detail.detail;
+      }
+    }
+    if (typeof err.message === 'string' && err.message) return err.message;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function tr(key) {
   try {
@@ -31,6 +63,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     console.log(`[AXIOS] ${response.config.method.toUpperCase()} ${response.config.url} -> ${response.status}`);
+    // If this was a token-spending action, refresh the Navbar counter
+    // immediately (fire-and-forget; never block the request on it).
+    if (isTokenSpendingRequest(response.config.method, response.config.url)) {
+      refreshTokenBalance();
+    }
     return response;
   },
   (error) => {

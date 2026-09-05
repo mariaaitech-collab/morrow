@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
+import { ensureToken } from '../api/tokens';
 import { useLanguage } from '../i18n/LanguageContext';
 import Navbar from '../components/Navbar';
 import CropModal from '../components/CropModal';
@@ -186,6 +187,7 @@ function Scheduler({ user, onLogout }) {
       toast.error(t('scheduler.noneConnected'));
       return;
     }
+    if (!ensureToken()) return;
     const [h, m] = (formTime || '09:00').split(':').map(Number);
     const local = new Date(selectedDay);
     local.setHours(h, m, 0, 0);

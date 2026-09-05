@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { PenLine, CalendarClock, Wand2, BarChart3, CalendarDays, Crown } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,6 +7,7 @@ import api from '../api/axios';
 import { useLanguage } from '../i18n/LanguageContext';
 import Navbar from '../components/Navbar';
 import ContentGenerator from '../components/ContentGenerator';
+import GuideBot from '../components/GuideBot';
 
 const EASE = [0.25, 1, 0.5, 1];
 const MAUVE = '#B8A1A8';
@@ -63,6 +64,7 @@ function Metric({ label, value }) {
 }
 
 function Dashboard({ user, onLogout }) {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState(null);
@@ -120,6 +122,33 @@ function Dashboard({ user, onLogout }) {
   useEffect(() => {
     fetchAccounts();
     fetchSub();
+  }, []);
+
+  // OAuth callback landing: the backend redirects here with
+  // ?connection_success=true&platform=... after connecting a social account.
+  // Show a premium toast, refresh the connected accounts live, then strip the
+  // query params so the toast never re-fires on reload.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('connection_success');
+    if (status === null) return;
+
+    if (status === 'true') {
+      toast.success(t('dashboard.platformConnected'), {
+        duration: 5000,
+      });
+    } else {
+      toast.error(t('dashboard.connectionFailed'), { duration: 5000 });
+    }
+
+    fetchAccounts();
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('connection_success');
+    url.searchParams.delete('platform');
+    url.searchParams.delete('error');
+    window.history.replaceState({}, '', url.pathname + url.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scrollToStudio = () => {
@@ -319,6 +348,7 @@ function Dashboard({ user, onLogout }) {
         </section>
       </div>
 
+      <GuideBot onNavigate={navigate} />
     </>
   );
 }

@@ -19,7 +19,7 @@ from db import ScheduledPost, SessionLocal
 import mongodb
 from config import utc_now
 from usage import get_optional_user, record_usage
-from deps import get_current_user, require_subscription
+from deps import get_current_user, require_subscription, require_token, deduct_token
 from routers.content import (
     _boosted_ai_prompt,
     _detect_media_type,
@@ -30,7 +30,7 @@ from routers.content import (
     _post_to_linkedin,
     _upload_to_cloudinary,
 )
-from routers.social import connected_accounts
+from routers.social import refresh_fb_pages_for_user
 
 logger = logging.getLogger("brandora")
 
@@ -103,7 +103,7 @@ def _get_session():
 @router.post("/schedule")
 async def create_scheduled_post(
     request: Request,
-    user: dict = Depends(require_subscription),
+    user: dict = Depends(require_token),
     scheduled_at: str = Form(...),
     platforms: str = Form(...),
     content: str = Form(...),
@@ -332,7 +332,7 @@ async def _build_post_rows(payload: CalendarPostCreate, owner_email: str):
 
 
 @router.post("/calendar/post")
-async def calendar_create_post(payload: CalendarPostCreate, user: dict = Depends(require_subscription)):
+async def calendar_create_post(payload: CalendarPostCreate, user: dict = Depends(require_token)):
     """Create one post (or a recurring series) from the Visual Content Calendar."""
     rows = await _build_post_rows(payload, user["email"])
     session = _get_session()
@@ -661,11 +661,20 @@ async def _execute_post(post_id: int):
         if not post:
             return
 
+        own_accounts = {}
+        if post.created_by:
+            try:
+                owner = await mongodb.users.find_one({"email": post.created_by})
+                if owner:
+                    own_accounts = await refresh_fb_pages_for_user(str(owner["_id"]))
+            except Exception as e:
+                logger.warning("Failed to resolve owner accounts for post %s: %s", post_id, e)
+
         platforms = json.loads(post.platforms)
         results = {}
 
         for platform in platforms:
-            account = connected_accounts.get(platform)
+            account = own_accounts.get(platform)
             if not account:
                 results[platform] = {"status": "not_connected", "message": f"{platform} is not connected"}
                 continue
@@ -682,7 +691,7 @@ async def _execute_post(post_id: int):
                     )
                 elif platform == "linkedin":
                     results[platform] = await _post_to_linkedin(
-                        access_token, post.content, post.media_url, post.media_type
+                        access_token, post.content, post.media_url, post.media_type, account.get("provider_account_id")
                     )
                 elif platform == "instagram":
                     results[platform] = await _post_to_instagram(
@@ -701,6 +710,15 @@ async def _execute_post(post_id: int):
             try:
                 user_doc = await mongodb.users.find_one({"email": post.created_by})
                 if user_doc:
+                    # Freemium token system: triggering an auto-post spends one
+                    # free token (Pro users are unlimited and unaffected). This
+                    # is best-effort — running out of tokens must never mark a
+                    # successfully-published post as failed.
+                    try:
+                        from deps import deduct_token
+                        await deduct_token(user_doc)
+                    except HTTPException:
+                        pass
                     for platform, res in results.items():
                         if res.get("status") == "success":
                             await record_usage(

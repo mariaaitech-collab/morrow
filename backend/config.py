@@ -29,7 +29,8 @@ CORS_ORIGINS = tuple(
 )
 
 # Administrator account that can manually approve Pro activations.
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "meveryx@gmail.com").strip().lower()
+# This is the ONLY account that may access the /admin panel and admin routes.
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "maria.ai.tech@gmail.com").strip().lower()
 
 # SMTP for password-recovery emails (Gmail by default)
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")

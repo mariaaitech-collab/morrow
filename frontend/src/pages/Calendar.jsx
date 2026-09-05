@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
+import { ensureToken } from '../api/tokens';
 import { useLanguage } from '../i18n/LanguageContext';
 import Navbar from '../components/Navbar';
 
@@ -174,6 +175,7 @@ function Calendar({ user, onLogout }) {
       });
     }
     if (postsArr.length === 0) return toast.error(t('calendar.noValidLines'));
+    if (!ensureToken()) return;
     setSaving(true);
     try {
       const { data } = await api.post('/calendar/bulk', { posts: postsArr });

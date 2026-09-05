@@ -21,6 +21,7 @@ async def lifespan(app: FastAPI):
     if await mongodb.mongo_ok():
         await mongodb.init_mongo()
         await mongodb.fix_missing_trials()
+        await mongodb.fix_missing_tokens()
         print("[DB] MongoDB connected (users + activity history)")
     else:
         print("[DB] WARNING: MongoDB unreachable — auth/history will be unavailable")

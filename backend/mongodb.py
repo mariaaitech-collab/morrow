@@ -67,3 +67,23 @@ async def fix_missing_trials():
             print(f"[DB] Bootstrapped trial window for {res.modified_count} existing user(s)")
     except Exception as e:
         print("fix_missing_trials error:", e)
+
+
+async def fix_missing_tokens():
+    """Backfill freemium tokens for accounts that don't have a balance yet.
+
+    Runs once at startup so accounts created before the token system (and any
+    that never received a grant) get the standard free-token allowance. Only
+    users who have never been granted tokens are touched, so a depleted balance
+    is never silently refilled.
+    """
+    from deps import FREE_TOKENS_ON_SIGNUP
+    try:
+        res = await users.update_many(
+            {"free_tokens": {"$exists": False}},
+            {"$set": {"free_tokens": FREE_TOKENS_ON_SIGNUP}},
+        )
+        if res.modified_count:
+            print(f"[DB] Granted {FREE_TOKENS_ON_SIGNUP} free token(s) to {res.modified_count} existing user(s)")
+    except Exception as e:
+        print("fix_missing_tokens error:", e)

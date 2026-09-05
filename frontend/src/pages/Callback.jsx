@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import api from '../api/axios';
 import { useLanguage } from '../i18n/LanguageContext';
 
 function Callback() {
@@ -37,27 +36,20 @@ function Callback() {
       return;
     }
 
-    const exchangeCode = async () => {
-      try {
-        console.log(`[CALLBACK] Sending code to backend for ${platform}...`);
-        const { data } = await api.get(`/social/callback/${platform}`, {
-          params: { code },
-        });
-        console.log(`[CALLBACK] Backend response:`, data);
-        toast.success(t('callback.successBody'));
-        setStatus(t('callback.successTitle'));
-        setTimeout(() => navigate('/'), 2000);
-      } catch (err) {
-        console.error(`[CALLBACK] Backend callback failed:`, err);
-        console.error(`[CALLBACK] Response:`, err.response?.status, err.response?.data);
-        const detail = err.response?.data?.detail || err.message || t('callback.errorBody');
-        toast.error(detail);
-        setStatus(t('callback.errorBody'));
-        setTimeout(() => navigate('/'), 3000);
-      }
-    };
-
-    exchangeCode();
+    // Full page-level navigation to the backend callback. The backend exchanges
+    // the code, saves the account, and issues a 302 RedirectResponse back to
+    // /dashboard?connection_success=... which the browser follows directly —
+    // so the address bar lands on the Dashboard with the result params. The
+    // JWT is passed as a query param because a top-level navigation can't carry
+    // an Authorization header.
+    const base = import.meta.env.VITE_API_BASE_URL || '/api';
+    const token = localStorage.getItem('brandora_token') || '';
+    const callbackUrl =
+      `${base}/social/callback/${platform}` +
+      `?code=${encodeURIComponent(code)}` +
+      `&access_token=${encodeURIComponent(token)}`;
+    console.log(`[CALLBACK] Navigating to backend: ${callbackUrl}`);
+    window.location.href = callbackUrl;
   }, [platform, navigate, t]);
 
   return (

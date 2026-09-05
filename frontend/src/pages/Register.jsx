@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import api from '../api/axios';
+import api, { extractApiError } from '../api/axios';
 import SEO from '../components/SEO';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AuthShell } from './Login';
@@ -40,7 +40,7 @@ export default function Register() {
       toast.success(t('auth.welcomeRegister', { username: data.username }));
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.detail || t('auth.registrationFailed'));
+      toast.error(extractApiError(err, t('auth.registrationFailed')));
     } finally {
       setLoading(false);
     }

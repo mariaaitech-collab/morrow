@@ -36,7 +36,8 @@ def create_access_token(data: dict):
 
 def _public(user: dict) -> dict:
     from deps import compute_subscription
-    created = user.get("created_at")
+    from deps import _coerce_dt
+    created = _coerce_dt(user.get("created_at"))
     sub = compute_subscription(user)
     return {
         "id": str(user["_id"]),
@@ -47,10 +48,12 @@ def _public(user: dict) -> dict:
         "subscribed": sub["subscribed"],
         "is_pro": sub["is_pro"],
         "is_trialing": sub["is_trialing"],
+        "is_unlimited": sub.get("is_unlimited", False),
         "trial_ends_at": sub["trial_ends_at"],
         "subscription_ends_at": sub["subscription_ends_at"],
         "days_remaining": sub["days_remaining"],
         "access_active": sub["access_active"],
+        "free_tokens": sub["free_tokens"],
         "is_admin": bool(user.get("is_admin")) or (user.get("email", "") or "").lower() == ADMIN_EMAIL,
     }
 
@@ -79,6 +82,9 @@ async def register(user: UserCreate):
         "subscribed": False,
         "plan": "trial",
         "subscription_ends_at": None,
+        # Freemium token system: new accounts start with a free-token allowance
+        # for core actions (AI content, image generation, auto-posts).
+        "free_tokens": 3,
         # Admin account (manual Pro approval) is keyed off the configured admin email.
         "is_admin": email == ADMIN_EMAIL,
     }
@@ -125,6 +131,10 @@ async def login(user: UserLogin, request: Request, _: None = Depends(login_rate_
             {"$set": {"password_hash": pwd_context.hash(user.password)}},
         )
 
+    # Developer testing override: top up tokens + unlock for this exact email.
+    from deps import apply_dev_override
+    db_user = await apply_dev_override(db_user)
+
     token = create_access_token({"sub": email, "username": db_user["username"]})
     is_admin = bool(db_user.get("is_admin")) or (db_user.get("email", "") or "").lower() == ADMIN_EMAIL
     return TokenResponse(access_token=token, username=db_user["username"], is_admin=is_admin)
@@ -143,6 +153,8 @@ async def me(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme))
     db_user = await mongodb.users.find_one({"email": email}) if email else None
     if not db_user:
         raise HTTPException(status_code=401, detail="Account no longer exists.")
+    from deps import apply_dev_override
+    db_user = await apply_dev_override(db_user)
     return _public(db_user)
 
 

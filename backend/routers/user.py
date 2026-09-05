@@ -28,17 +28,16 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(b
     user = await mongodb.users.find_one({"email": email}) if email else None
     if not user:
         raise HTTPException(status_code=401, detail="Account no longer exists.")
-    return user
+    from deps import apply_dev_override
+    return await apply_dev_override(user)
 
 
 def _iso_utc(dt):
     if dt is None:
         return None
-    if dt.tzinfo is None:
-        from config import utc_now
-
-        dt = dt.replace(tzinfo=utc_now().tzinfo)
-    return dt.isoformat()
+    from deps import _coerce_dt
+    dt = _coerce_dt(dt)
+    return dt.isoformat() if dt else None
 
 
 @router.get("/me")
@@ -48,6 +47,8 @@ async def me(user=Depends(get_current_user)):
         "username": user.get("username", ""),
         "email": user.get("email", ""),
         "created_at": _iso_utc(user.get("created_at")),
+        "free_tokens": int(user.get("free_tokens", 0)),
+        "is_pro": bool(user.get("subscribed")),
     }
 
 

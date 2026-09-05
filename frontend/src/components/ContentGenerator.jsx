@@ -1,9 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaFacebookF, FaLinkedinIn, FaInstagram } from 'react-icons/fa';
 import api from '../api/axios';
+import { ensureToken } from '../api/tokens';
 import CropModal from './CropModal';
+import MarketInsights from './MarketInsights';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useDraft } from '../draft/DraftContext';
 
 const TONES = [
   { value: 'viral', icon: '🔥' },
@@ -29,38 +32,134 @@ const PLATFORM_META = {
   facebook: { badge: 'badge-facebook' },
 };
 
+// Map the UI language code to a full English language name so Gemini generates
+// the actual content in the selected language instead of defaulting to English.
+const LANGUAGE_NAMES = {
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese',
+  it: 'Italian', nl: 'Dutch', ru: 'Russian', zh: 'Chinese', ja: 'Japanese',
+  ko: 'Korean', ar: 'Arabic', ur: 'Urdu', hi: 'Hindi', bn: 'Bengali',
+  pa: 'Punjabi', ta: 'Tamil', te: 'Telugu', mr: 'Marathi', gu: 'Gujarati',
+  kn: 'Kannada', ml: 'Malayalam', th: 'Thai', vi: 'Vietnamese', id: 'Indonesian',
+  ms: 'Malay', fil: 'Filipino', jw: 'Javanese', su: 'Sundanese', my: 'Burmese',
+  km: 'Khmer', lo: 'Lao', ne: 'Nepali', si: 'Sinhala', tr: 'Turkish',
+  pl: 'Polish', uk: 'Ukrainian', cs: 'Czech', sk: 'Slovak', hu: 'Hungarian',
+  ro: 'Romanian', el: 'Greek', bg: 'Bulgarian', hr: 'Croatian', sr: 'Serbian',
+  sl: 'Slovenian', et: 'Estonian', lv: 'Latvian', lt: 'Lithuanian', he: 'Hebrew',
+  fa: 'Persian', ps: 'Pashto', sd: 'Sindhi', ku: 'Kurdish', ug: 'Uyghur',
+  yi: 'Yiddish', dv: 'Divehi', am: 'Amharic', sw: 'Swahili', yo: 'Yoruba',
+  ig: 'Igbo', ha: 'Hausa', zu: 'Zulu', xh: 'Xhosa', af: 'Afrikaans',
+  so: 'Somali', wo: 'Wolof', az: 'Azerbaijani', kk: 'Kazakh', uz: 'Uzbek',
+  tg: 'Tajik', ka: 'Georgian', hy: 'Armenian', mk: 'Macedonian', sq: 'Albanian',
+  bs: 'Bosnian', fo: 'Faroese', is: 'Icelandic', ga: 'Irish', cy: 'Welsh',
+  gd: 'Scottish Gaelic', eu: 'Basque', ca: 'Catalan', gl: 'Galician',
+  mt: 'Maltese', lb: 'Luxembourgish', be: 'Belarusian', mn: 'Mongolian',
+  ky: 'Kyrgyz', tk: 'Turkmen', sv: 'Swedish', da: 'Danish', fi: 'Finnish',
+  nb: 'Norwegian Bokmål',
+};
+function languageName(code) {
+  return (code && LANGUAGE_NAMES[code]) || 'English';
+}
+
 function ContentGenerator({ accounts }) {
-  const { t } = useLanguage();
-  const [topic, setTopic] = useState('');
-  const [tone, setTone] = useState('professional');
-  const [selectedPlatforms, setSelectedPlatforms] = useState(['facebook', 'linkedin', 'instagram']);
+  const { t, language } = useLanguage();
+  const { draft, setDraft, clearDraft } = useDraft();
+
+  // Draft-backed fields: these survive navigation between pages and are only
+  // wiped by the explicit "Clear all" button or logging out.
+  const topic = draft.topic;
+  const setTopic = (v) => setDraft({ topic: v });
+  const tone = draft.tone;
+  const setTone = (v) => setDraft({ tone: v });
+  const selectedPlatforms = draft.selectedPlatforms;
+  const setSelectedPlatforms = (v) => setDraft({ selectedPlatforms: v });
+  const content = draft.content;
+  const setContent = (v) => setDraft({ content: v });
+  const imagePrompt = draft.imagePrompt;
+  const setImagePrompt = (v) => setDraft({ imagePrompt: v });
+  const imageMode = draft.imageMode;
+  const setImageMode = (v) => setDraft({ imageMode: v });
+  const publishResults = draft.publishResults;
+  const setPublishResults = (v) => setDraft({ publishResults: v });
+  const strategyData = draft.strategyData;
+  const setStrategyData = (v) => setDraft({ strategyData: v });
+  const competitorError = draft.competitorError;
+  const setCompetitorError = (v) => setDraft({ competitorError: v });
+
+  // Transient UI state (not worth persisting).
   const [loading, setLoading] = useState(false);
-  const [content, setContent] = useState(null);
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
   const [publishing, setPublishing] = useState(false);
-  const [publishResults, setPublishResults] = useState({});
   const [cropModal, setCropModal] = useState(null);
-  const [imagePrompt, setImagePrompt] = useState('');
   const [imageGenerating, setImageGenerating] = useState(false);
-  const [imageMode, setImageMode] = useState('free');
   const [imageQuotaExceeded, setImageQuotaExceeded] = useState(false);
   const [proTrialCount, setProTrialCount] = useState(() => {
     const stored = parseInt(localStorage.getItem('proTrialCount') || '0', 10);
     return Number.isFinite(stored) && stored > 0 ? stored : 0;
   });
   const [competitorLoading, setCompetitorLoading] = useState(false);
-  const [strategyData, setStrategyData] = useState(null);
-  const [competitorError, setCompetitorError] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Restore an attached media file from the persisted draft on mount (only
+  // when a base64 dataUrl survived — large files keep metadata only).
+  useEffect(() => {
+    if (!draft.media || !draft.media.dataUrl) return;
+    let cancelled = false;
+    const mime = draft.media.type || (draft.media.name && draft.media.name.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+    fetch(draft.media.dataUrl)
+      .then((r) => r.blob())
+      .then((blob) => {
+        if (cancelled) return;
+        const ext = mime.includes('video') ? 'mp4' : mime.includes('png') ? 'png' : 'jpg';
+        const f = new File([blob], draft.media.name || `restored-${Date.now()}.${ext}`, { type: mime });
+        setMediaFile(f);
+        setMediaType(mime.includes('video') ? 'video' : 'image');
+        setMediaPreview(URL.createObjectURL(blob));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mirror the live media into the persisted draft (blobs can't be serialized,
+  // so we store a base64 dataUrl for small files and metadata for large ones).
+  useEffect(() => {
+    if (!mediaFile) {
+      if (draft.media) setDraft({ media: null });
+      return;
+    }
+    const meta = { name: mediaFile.name, size: mediaFile.size, type: mediaFile.type || (mediaType || '') };
+    if (mediaFile.size > 3.5 * 1024 * 1024) {
+      setDraft({ media: { ...meta, dataUrl: null } });
+      return;
+    }
+    let cancelled = false;
+    const reader = new FileReader();
+    reader.onload = () => { if (!cancelled) setDraft({ media: { ...meta, dataUrl: reader.result } }); };
+    reader.onerror = () => { if (!cancelled) setDraft({ media: { ...meta, dataUrl: null } }); };
+    reader.readAsDataURL(mediaFile);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaFile]);
 
   const connectedPlatforms = accounts.filter((a) => a.connected).map((a) => a.platform);
 
   const togglePlatform = (p) => {
-    setSelectedPlatforms((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    setSelectedPlatforms(
+      selectedPlatforms.includes(p)
+        ? selectedPlatforms.filter((x) => x !== p)
+        : [...selectedPlatforms, p]
     );
+  };
+
+  const handleClearAll = () => {
+    removeMedia();
+    setLoading(false);
+    clearDraft();
+    toast.success(t('contentGenerator.draftCleared'));
   };
 
   const handleFileSelect = (e) => {
@@ -117,6 +216,7 @@ function ContentGenerator({ accounts }) {
       toast.error(t('contentGenerator.pleaseTopic'));
       return;
     }
+    if (!ensureToken()) return;
     setLoading(true);
     setContent(null);
     setPublishResults({});
@@ -124,6 +224,7 @@ function ContentGenerator({ accounts }) {
       const formData = new FormData();
       formData.append('topic', topic.trim());
       formData.append('tone', tone);
+      formData.append('language', languageName(language));
       const { data } = await api.post('/content/generate', formData);
       setContent(data);
       toast.success(t('contentGenerator.contentGenerated'));
@@ -145,6 +246,7 @@ function ContentGenerator({ accounts }) {
       formData.append('topic', topic.trim());
       formData.append('platforms', JSON.stringify(selectedPlatforms));
       formData.append('content', `${content.title}\n\n${content.body}`);
+      formData.append('language', languageName(language));
       const { data } = await api.post('/strategy', formData, { timeout: 300000 });
       setStrategyData(data);
       toast.success(t('contentGenerator.eliteStrategyReady'));
@@ -163,6 +265,7 @@ function ContentGenerator({ accounts }) {
       toast.error(t('contentGenerator.describeImage'));
       return;
     }
+    if (!ensureToken()) return;
     if (mode === 'pro' && proTrialCount >= 2) {
       setImageQuotaExceeded(true);
       toast.error(t('contentGenerator.proLimitReached'), { duration: 6000 });
@@ -235,6 +338,7 @@ function ContentGenerator({ accounts }) {
       toast.error(t('contentGenerator.selectedConnected'));
       return;
     }
+    if (!ensureToken()) return;
     setPublishing(true);
     setPublishResults({});
     try {
@@ -252,7 +356,10 @@ function ContentGenerator({ accounts }) {
         const ok = Object.entries(data.results).filter(([, r]) => r.status === 'success');
         const fail = Object.entries(data.results).filter(([, r]) => r.status !== 'success');
         if (ok.length > 0) toast.success(t('contentGenerator.publishSuccess', { platforms: ok.map(([p]) => p).join(', ') }));
-        fail.forEach(([p, r]) => toast.error(t('contentGenerator.platformError', { platform: p, message: r.message })));
+        fail.forEach(([p, r]) => {
+          const reason = r && r.message ? r.message : (r ? JSON.stringify(r) : 'Unknown error');
+          toast.error(t('contentGenerator.platformError', { platform: p, message: reason }));
+        });
       }
     } catch (err) {
       const detail = err.response?.data?.detail || (err.code === 'ECONNABORTED'
@@ -279,7 +386,17 @@ function ContentGenerator({ accounts }) {
 
   return (
     <div className="content-generator">
-      <h3>{t('contentGenerator.title')}</h3>
+      <div className="content-gen-head">
+        <h3>{t('contentGenerator.title')}</h3>
+        <button
+          className="clear-btn"
+          onClick={handleClearAll}
+          disabled={loading || publishing}
+          title={t('contentGenerator.clearAllTitle')}
+        >
+          {t('contentGenerator.clearAll')}
+        </button>
+      </div>
 
       <div className="gen-form">
         <div className="form-group">
@@ -657,12 +774,14 @@ function ContentGenerator({ accounts }) {
               {publishing ? (
                 <><span className="spinner-sm" /> {t('contentGenerator.publishing')}</>
               ) : (
-                t('contentGenerator.publishBtn', { count: connectedCount, plural: connectedCount !== 1 ? 's' : '' })
+                t('contentGenerator.publishBtn')
               )}
             </button>
           </div>
         </div>
       )}
+
+      <MarketInsights />
 
       {cropModal && (
         <CropModal

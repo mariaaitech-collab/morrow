@@ -3,9 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { Toaster } from 'react-hot-toast';
 import Lenis from 'lenis';
 import { isAuthenticated } from './auth';
+import api from './api/axios';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { DraftProvider, useDraft } from './draft/DraftContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import UpgradeModal from './components/UpgradeModal';
+import UpgradeModal from './components/PricingModal';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -40,11 +42,56 @@ function AppContent() {
     }
   });
 
+  const { clearDraft } = useDraft();
   const handleLogout = useCallback(() => {
     localStorage.removeItem('brandora_token');
     localStorage.removeItem('brandora_user');
+    clearDraft();
     setUser(null);
     window.location.href = '/login';
+  }, [clearDraft]);
+
+  // Live token counter: whenever the backend reports a new balance, update the
+  // App-level user state (and the stored copy) so the Navbar re-renders at once.
+  useEffect(() => {
+    const onTokensUpdated = (e) => {
+      const tokens = e?.detail?.tokens;
+      const isUnlimited = e?.detail?.isUnlimited;
+      setUser((prev) => {
+        const next = { ...(prev || {}) };
+        if (typeof tokens === 'number') next.free_tokens = tokens;
+        if (typeof isUnlimited === 'boolean') next.is_unlimited = isUnlimited;
+        return next;
+      });
+    };
+    window.addEventListener('brandora:tokens-updated', onTokensUpdated);
+    return () => window.removeEventListener('brandora:tokens-updated', onTokensUpdated);
+  }, []);
+
+  // On load, sync the stored profile against /auth/me so free_tokens / plan are
+  // accurate for the Navbar counter even right after signing in.
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/auth/me');
+        if (cancelled || !data) return;
+        const merged = { ...(user || {}), ...data };
+        setUser(merged);
+        try {
+          localStorage.setItem('brandora_user', JSON.stringify(merged));
+        } catch {
+          /* ignore */
+        }
+      } catch {
+        /* ignore transient failures */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -155,8 +202,10 @@ function App() {
   return (
     <BrowserRouter>
       <LanguageProvider>
-        <AppContent />
-        <UpgradeModal />
+        <DraftProvider>
+          <AppContent />
+          <UpgradeModal />
+        </DraftProvider>
       </LanguageProvider>
     </BrowserRouter>
   );

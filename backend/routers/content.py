@@ -15,9 +15,9 @@ from config import (
     GEMINI_API_KEY, GEMINI_API_URL, GEMINI_TEXT_MODEL, TAVILY_API_KEY,
     CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET,
 )
-from routers.social import connected_accounts
+from routers.social import refresh_fb_pages_for_user
 from usage import get_optional_user, record_usage
-from deps import require_subscription
+from deps import require_subscription, require_token, deduct_token
 
 router = APIRouter(prefix="/api/content", tags=["content"])
 
@@ -58,7 +58,20 @@ TONE_INSTRUCTIONS = {
 # ---------------------------------------------------------------------------
 
 
-async def _generate_post_content(topic: str, tone: str = "professional") -> dict:
+def _language_rule(language: str) -> str:
+    """Build the injected language instruction for the AI.
+
+    If a non-empty language was provided, instruct Gemini to write the entire
+    response strictly in that language. Otherwise default to English.
+    """
+    lang = (language or "").strip() or "English"
+    return (
+        f"LANGUAGE: You MUST write the entire response strictly in {lang}. "
+        f"Do not use English unless explicitly asked.\n"
+    )
+
+
+async def _generate_post_content(topic: str, tone: str = "professional", language: str = "") -> dict:
     """Core Gemini post generator.
 
     Converts a topic/prompt into a fully formatted, engaging social media post
@@ -69,8 +82,10 @@ async def _generate_post_content(topic: str, tone: str = "professional") -> dict
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
     tone_guide = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
+    lang_rule = _language_rule(language)
 
-    prompt = f"""You are Brandora, an expert digital marketing content creator. Generate ONE single, high-quality social media post for the topic: "{topic}"
+    prompt = f"""{lang_rule}
+You are Brandora, an expert digital marketing content creator. Generate ONE single, high-quality social media post for the topic: "{topic}"
 
 TONE & STYLE:
 {tone_guide}
@@ -143,13 +158,15 @@ CRITICAL RULES:
 @router.post("/generate")
 async def generate_content(
     request: Request,
-    user: dict = Depends(require_subscription),
+    user: dict = Depends(require_token),
     topic: str = Form(...),
     tone: str = Form("professional"),
+    language: str = Form(""),
 ):
-    print(f"[CONTENT] Generating unified post for topic='{topic}', tone={tone}")
-    content = await _generate_post_content(topic, tone)
+    print(f"[CONTENT] Generating unified post for topic='{topic}', tone={tone}, language='{language}'")
+    content = await _generate_post_content(topic, tone, language)
 
+    remaining = await deduct_token(user)
     await record_usage(user, "content_generation", "Generated an AI caption", f"Topic: {topic.strip()[:90]}")
 
     return {
@@ -157,6 +174,7 @@ async def generate_content(
         "tone": tone,
         "title": content.get("title", ""),
         "body": content.get("body", ""),
+        "tokens_left": remaining,
     }
 
 
@@ -220,7 +238,7 @@ def _select_top_four(buckets):
     return selected[:4]
 
 
-async def _tavily_search_platform(topic: str, platform: str):
+async def _tavily_search_platform(topic: str, platform: str, location: str = ""):
     if not TAVILY_API_KEY:
         raise HTTPException(
             status_code=503,
@@ -228,13 +246,19 @@ async def _tavily_search_platform(topic: str, platform: str):
         )
 
     config = PLATFORM_DOMAINS[platform]
+    # When a geographic location is provided, scope the live search to that
+    # local market so competitors genuinely reflect the user's region.
+    query = topic
+    if location and location.strip():
+        query = f"{topic} {location.strip()}"
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 "https://api.tavily.com/search",
                 json={
                     "api_key": TAVILY_API_KEY,
-                    "query": topic,
+                    "query": query,
                     "search_depth": "basic",
                     "include_domains": [config["domain"]],
                     "max_results": 5,
@@ -473,7 +497,7 @@ async def _generate_pollinations_image(prompt: str, width: int, height: int, mod
 @router.post("/generate-image")
 async def generate_image(
     request: Request,
-    user: dict = Depends(require_subscription),
+    user: dict = Depends(require_token),
     prompt: str = Form(...),
     mode: str = Form("free"),
     width: int = Form(1080),
@@ -501,6 +525,7 @@ async def generate_image(
     filename = f"ai_generated_{provider}_{int(time.time() * 1000)}.{ext}"
 
     mode_label = "Pro (Premium)" if mode == "pro" else "Free"
+    remaining = await deduct_token(user)
     await record_usage(user, "image_generation", "Generated an AI image", f"{mode_label} · {prompt.strip()[:90]}")
 
     return Response(
@@ -568,7 +593,7 @@ def _detect_media_type(filename: str, content_type: str) -> str:
 
 @router.post("/publish")
 async def publish_content(
-    user: dict = Depends(require_subscription),
+    user: dict = Depends(require_token),
     content: str = Form(...),
     platforms: str = Form(...),
     media: Optional[UploadFile] = File(None),
@@ -591,13 +616,14 @@ async def publish_content(
             raise HTTPException(status_code=500, detail=f"Failed to upload media: {str(e)}")
 
     results = {}
+    own_accounts = await refresh_fb_pages_for_user(str(user["_id"]))
 
     for platform in platform_list:
-        if platform not in connected_accounts:
+        if platform not in own_accounts:
             results[platform] = {"status": "not_connected", "message": f"{platform} is not connected"}
             continue
 
-        account = connected_accounts[platform]
+        account = own_accounts[platform]
         access_token = account.get("access_token")
 
         if not access_token:
@@ -608,7 +634,7 @@ async def publish_content(
             if platform == "facebook":
                 result = await _post_to_facebook(account, content, media_url, media_type)
             elif platform == "linkedin":
-                result = await _post_to_linkedin(access_token, content, media_url, media_type)
+                result = await _post_to_linkedin(access_token, content, media_url, media_type, account.get("provider_account_id"))
             elif platform == "instagram":
                 result = await _post_to_instagram(account, content, media_url, media_type)
             else:
@@ -622,50 +648,104 @@ async def publish_content(
 
     print(f"[CONTENT] Publish complete: {json.dumps(results)}")
     logger.info(f"Publish complete: {json.dumps(results)}")
-    return {"results": results}
+    remaining = await deduct_token(user)
+    return {"results": results, "tokens_left": remaining}
 
 
 async def _post_to_facebook(account: dict, content: str, media_url: str = None, media_type: str = None) -> dict:
-    page_token = account.get("page_access_token")
-    page_id = account.get("page_id")
+    # Multi-page publishing: authorized FB Pages live in account["pages"] (one
+    # entry per page, each with its own access_token). Post to EVERY page; if a
+    # page fails, log the exact Meta error and keep publishing to the rest.
+    pages = account.get("pages") or []
+    if not pages:
+        # Backward compatibility: connections saved before multi-page support
+        # only carried the primary page's id + token.
+        legacy_id = account.get("page_id")
+        legacy_token = account.get("page_access_token")
+        if legacy_id and legacy_token:
+            pages = [{"id": legacy_id, "access_token": legacy_token}]
 
-    if not page_token or not page_id:
-        return {"status": "error", "message": "No Facebook Page found. Reconnect your Facebook account."}
+    if not pages:
+        return {"status": "error", "message": "No Facebook Pages found. Reconnect your Facebook account."}
 
-    try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            if media_url and media_type == "video":
-                response = await client.post(
-                    f"https://graph.facebook.com/v18.0/{page_id}/videos",
-                    data={"file_url": media_url, "description": content, "access_token": page_token},
-                )
-            elif media_url and media_type == "image":
-                response = await client.post(
-                    f"https://graph.facebook.com/v18.0/{page_id}/photos",
-                    data={"url": media_url, "caption": content, "access_token": page_token},
-                )
+    published_ids = []
+    errors = []
+
+    for page in pages:
+        page_id = page.get("id")
+        page_token = page.get("access_token")
+        if not page_id or not page_token:
+            errors.append(f"page missing id/token: {json.dumps(page)}")
+            continue
+
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                if media_url and media_type == "video":
+                    response = await client.post(
+                        f"https://graph.facebook.com/v18.0/{page_id}/videos",
+                        data={"file_url": media_url, "description": content, "access_token": page_token},
+                    )
+                elif media_url and media_type == "image":
+                    response = await client.post(
+                        f"https://graph.facebook.com/v18.0/{page_id}/photos",
+                        data={"url": media_url, "caption": content, "access_token": page_token},
+                    )
+                else:
+                    response = await client.post(
+                        f"https://graph.facebook.com/v18.0/{page_id}/feed",
+                        data={"message": content, "access_token": page_token},
+                    )
+            data = response.json()
+            print(f"[CONTENT] Facebook publish page {page_id} HTTP {response.status_code}: {json.dumps(data)}")
+
+            # STRICT success check per page — only Meta-confirmed IDs count.
+            if response.status_code != 200 or "error" in data or not data.get("id"):
+                err = data.get("error", {})
+                err_msg = err.get("message", data.get("message", "Unknown Facebook error"))
+                print(f"[CONTENT] Facebook REJECTED for page {page_id} (HTTP {response.status_code}): {err_msg}")
+                errors.append(f"page {page_id}: {err_msg}")
             else:
-                response = await client.post(
-                    f"https://graph.facebook.com/v18.0/{page_id}/feed",
-                    data={"message": content, "access_token": page_token},
-                )
+                published_ids.append(data["id"])
+                print(f"[CONTENT] Facebook CONFIRMED live on page {page_id}: post_id={data['id']}")
+        except Exception as e:
+            print(f"[CONTENT] Facebook publish exception for page {page_id}: {e}")
+            errors.append(f"page {page_id}: {str(e)}")
 
-        data = response.json()
-        print(f"[CONTENT] Facebook publish response: {json.dumps(data)}")
-        if "id" in data:
-            return {"status": "success", "post_id": data["id"]}
-        return {"status": "error", "message": data.get("error", {}).get("message", "Facebook post failed")}
-    except Exception as e:
-        print(f"[CONTENT] Facebook publish exception: {e}")
-        return {"status": "error", "message": f"Facebook publish failed: {str(e)}"}
+        # Light debounce between pages to stay friendly to Meta rate limits.
+        await asyncio.sleep(1)
+
+    if published_ids:
+        summary = f"Published to {len(published_ids)} Facebook page(s)"
+        if errors:
+            summary += f"; {len(errors)} page(s) failed: {' | '.join(errors)}"
+        result = {
+            "status": "success",
+            "post_id": ",".join(published_ids),
+            "message": summary,
+            "errors": errors,
+        }
+        print(f"[CONTENT] Facebook multi-page publish: {summary}")
+        return result
+
+    return {"status": "error", "message": "Facebook post failed on all pages: " + (" | ".join(errors) if errors else "unknown error")}
 
 
-async def _post_to_linkedin(access_token: str, content: str, media_url: str = None, media_type: str = None) -> dict:
+async def _post_to_linkedin(access_token: str, content: str, media_url: str = None, media_type: str = None, provider_account_id: str = None) -> dict:
+    # "urn:li:person:me" is rejected by the LinkedIn API. We MUST use the user's
+    # real profile id captured during OAuth; otherwise the post is never live.
+    if not provider_account_id:
+        return {"status": "error", "message": "LinkedIn profile ID missing. Reconnect your LinkedIn account."}
+
+    author_urn = f"urn:li:person:{provider_account_id}"
+
     if media_url and media_type == "video":
-        return await _linkedin_video_post(access_token, content, media_url)
+        return await _linkedin_video_post(access_token, content, media_url, author_urn)
+
+    if media_url and media_type == "image":
+        return await _linkedin_image_post(access_token, content, media_url, author_urn)
 
     post_data = {
-        "author": "urn:li:person:me",
+        "author": author_urn,
         "lifecycleState": "PUBLISHED",
         "specificContent": {
             "com.linkedin.ugc.ShareContent": {
@@ -682,96 +762,277 @@ async def _post_to_linkedin(access_token: str, content: str, media_url: str = No
             "originalUrl": media_url,
         }]
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            "https://api.linkedin.com/v2/ugcPosts",
-            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-            json=post_data,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.linkedin.com/v2/ugcPosts",
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                json=post_data,
+            )
+            response_text = response.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn post request failed: {str(e)}"}
 
-    data = response.json()
-    if "id" in data:
-        return {"status": "success", "post_id": data["id"]}
-    return {"status": "error", "message": data.get("message", data.get("error", "LinkedIn post failed"))}
+    if response.status_code != 201 or "id" not in response_text:
+        return {"status": "error", "message": f"LinkedIn post rejected: {response_text}"}
+    try:
+        data = response.json()
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn post created but id unparsable: {response_text}"}
+    return {"status": "success", "post_id": data["id"]}
 
 
-async def _linkedin_video_post(access_token: str, content: str, video_url: str) -> dict:
+async def _linkedin_video_post(access_token: str, content: str, video_url: str, author_urn: str) -> dict:
+    """Strict LinkedIn v2 video publish — register, upload, publish.
+    Every step fails hard (returning LinkedIn's literal response text)."""
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        register_resp = await client.post(
-            "https://api.linkedin.com/v2/assets?action=registerUpload",
-            headers=headers,
-            json={
-                "registerUploadRequest": {
-                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-video"],
-                    "owner": "urn:li:person:me",
-                    "serviceRelationships": [{
-                        "relationshipType": "OWNER",
-                        "identifier": "urn:li:userGeneratedContent",
-                    }],
-                }
-            },
-        )
+    # STEP A — Register the video asset.
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            register_resp = await client.post(
+                "https://api.linkedin.com/v2/assets?action=registerUpload",
+                headers=headers,
+                json={
+                    "registerUploadRequest": {
+                        "recipes": ["urn:li:digitalmediaRecipe:feedshare-video"],
+                        "owner": author_urn,
+                        "serviceRelationships": [{
+                            "relationshipType": "OWNER",
+                            "identifier": "urn:li:userGeneratedContent",
+                        }],
+                    }
+                },
+            )
+            register_text = register_resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn video registerUpload request failed: {str(e)}"}
 
+    if register_resp.status_code not in (200, 201) or "value" not in register_text:
+        return {"status": "error", "message": f"LinkedIn video registerUpload rejected: {register_text}"}
+
+    try:
         reg_data = register_resp.json()
-        print(f"[CONTENT] LinkedIn register upload: {json.dumps(reg_data, indent=2)[:500]}")
-
-        if "value" not in reg_data:
-            return {"status": "error", "message": reg_data.get("message", "LinkedIn video registration failed")}
-
         upload_url = reg_data["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
         asset_urn = reg_data["value"]["asset"]
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn video registerUpload payload malformed: {register_text}"}
 
-        video_resp = await client.get(video_url, timeout=300.0)
-        video_bytes = video_resp.content
+    # STEP B — Download the video then PUT the raw bytes.
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            video_resp = await client.get(video_url, timeout=300.0)
+            video_bytes = video_resp.content
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn video download failed: {str(e)}"}
+    if not video_bytes:
+        return {"status": "error", "message": "LinkedIn video download returned no bytes"}
 
-        upload_resp = await client.put(
-            upload_url,
-            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/octet-stream"},
-            content=video_bytes,
-        )
-        print(f"[CONTENT] LinkedIn video upload status: {upload_resp.status_code}")
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            upload_resp = await client.put(
+                upload_url,
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/octet-stream"},
+                content=video_bytes,
+            )
+            upload_text = upload_resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn video upload request failed: {str(e)}"}
+    print(f"[CONTENT] LinkedIn video upload status: {upload_resp.status_code}")
 
-        if upload_resp.status_code not in (200, 201):
-            return {"status": "error", "message": f"LinkedIn video upload failed (HTTP {upload_resp.status_code})"}
+    if upload_resp.status_code not in (200, 201):
+        return {"status": "error", "message": f"LinkedIn video upload rejected: {upload_text}"}
 
-        post_data = {
-            "author": "urn:li:person:me",
-            "lifecycleState": "PUBLISHED",
-            "specificContent": {
-                "com.linkedin.ugc.ShareContent": {
-                    "shareCommentary": {"text": content},
-                    "shareMediaCategory": "VIDEO",
-                    "media": [{
-                        "status": "READY",
-                        "media": asset_urn,
-                    }],
-                }
-            },
-            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
-        }
+    # STEP C — Publish the UGC post with the exact asset URN.
+    post_data = {
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": content},
+                "shareMediaCategory": "VIDEO",
+                "media": [{
+                    "status": "READY",
+                    "media": asset_urn,
+                }],
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            post_resp = await client.post(
+                "https://api.linkedin.com/v2/ugcPosts",
+                headers=headers,
+                json=post_data,
+            )
+            post_text = post_resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn video post request failed: {str(e)}"}
 
-        post_resp = await client.post(
-            "https://api.linkedin.com/v2/ugcPosts",
-            headers=headers,
-            json=post_data,
-        )
+    if post_resp.status_code != 201 or "id" not in post_text:
+        return {"status": "error", "message": f"LinkedIn video post rejected: {post_text}"}
+    try:
+        return {"status": "success", "post_id": post_resp.json()["id"]}
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn video post created but id unparsable: {post_text}"}
 
-        post_data_resp = post_resp.json()
-        if "id" in post_data_resp:
-            return {"status": "success", "post_id": post_data_resp["id"]}
-        return {"status": "error", "message": post_data_resp.get("message", "LinkedIn video post failed")}
+
+async def _linkedin_image_post(access_token: str, content: str, image_url: str, author_urn: str) -> dict:
+    """Strict LinkedIn v2 image publish — the exact 3-step sequence:
+    register -> upload -> publish. Every step fails hard, returning LinkedIn's
+    literal response text so the real rejection reason reaches the frontend."""
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+    # STEP A — Register the image asset (recipe feedshare-image), extract the
+    # uploadMechanism URL and the asset URN.
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            register_resp = await client.post(
+                "https://api.linkedin.com/v2/assets?action=registerUpload",
+                headers=headers,
+                json={
+                    "registerUploadRequest": {
+                        "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+                        "owner": author_urn,
+                        "serviceRelationships": [{
+                            "relationshipType": "OWNER",
+                            "identifier": "urn:li:userGeneratedContent",
+                        }],
+                    }
+                },
+            )
+            register_text = register_resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn image registerUpload request failed: {str(e)}"}
+
+    if register_resp.status_code not in (200, 201) or "value" not in register_text:
+        return {"status": "error", "message": f"LinkedIn image registerUpload rejected: {register_text}"}
+
+    try:
+        reg_data = register_resp.json()
+        upload_url = reg_data["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
+        asset_urn = reg_data["value"]["asset"]
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn image registerUpload payload malformed: {register_text}"}
+
+    # STEP B — Download the image and PUT the raw bytes (Bearer token included).
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            image_resp = await client.get(image_url, timeout=300.0)
+            image_bytes = image_resp.content
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn image download failed: {str(e)}"}
+    if not image_bytes:
+        return {"status": "error", "message": "LinkedIn image download returned no bytes"}
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            upload_resp = await client.put(
+                upload_url,
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/octet-stream"},
+                content=image_bytes,
+            )
+            upload_text = upload_resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn image upload request failed: {str(e)}"}
+    print(f"[CONTENT] LinkedIn image upload status: {upload_resp.status_code}")
+
+    if upload_resp.status_code not in (200, 201):
+        return {"status": "error", "message": f"LinkedIn image upload rejected: {upload_text}"}
+
+    # STEP C — Publish the UGC post with the exact asset URN from Step A.
+    post_data = {
+        "author": author_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": content},
+                "shareMediaCategory": "IMAGE",
+                "media": [{
+                    "status": "READY",
+                    "media": asset_urn,
+                }],
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            post_resp = await client.post(
+                "https://api.linkedin.com/v2/ugcPosts",
+                headers=headers,
+                json=post_data,
+            )
+            post_text = post_resp.text
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn image post request failed: {str(e)}"}
+
+    if post_resp.status_code != 201 or "id" not in post_text:
+        return {"status": "error", "message": f"LinkedIn image post rejected: {post_text}"}
+    try:
+        return {"status": "success", "post_id": post_resp.json()["id"]}
+    except Exception as e:
+        return {"status": "error", "message": f"LinkedIn image post created but id unparsable: {post_text}"}
+
+
+async def _resolve_ig_business_id(page_id: str, page_token: str):
+    """Live-resolve the Instagram Business Account id from a Facebook Page.
+
+    `instagram_business_account` is a nested object on the page; some older
+    connections (or pages linked after the token was saved) don't have it
+    stored locally yet. This self-heals that case at publish time.
+    """
+    if not page_id or not page_token:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"https://graph.facebook.com/v18.0/{page_id}",
+                params={"fields": "instagram_business_account", "access_token": page_token},
+            )
+        data = resp.json()
+        ig = data.get("instagram_business_account")
+        if resp.status_code == 200 and ig and ig.get("id"):
+            print(f"[CONTENT] IG business id resolved from page {page_id}: {ig['id']}")
+            return ig["id"]
+    except Exception as e:
+        print(f"[CONTENT] IG business id resolution failed: {e}")
+    return None
 
 
 async def _post_to_instagram(account: dict, content: str, media_url: str = None, media_type: str = None) -> dict:
     ig_id = account.get("instagram_business_id")
-    page_token = account.get("page_access_token")
+
+    # Instagram REQUIRES the access_token of the SPECIFIC Facebook Page that the
+    # IG Business account is linked to — never the User Token, never another
+    # page's token. Walk the pages array: first match by instagram_business_id,
+    # then (if the account-level id is missing) take the first page that itself
+    # carries an IG business id — that page is by definition the IG-linked one.
+    page_token = None
+    for pg in account.get("pages") or []:
+        if pg.get("instagram_business_id") == ig_id:
+            page_token = pg.get("access_token")
+            break
+    if not page_token:
+        for pg in account.get("pages") or []:
+            if pg.get("instagram_business_id"):
+                if not ig_id:
+                    ig_id = pg["instagram_business_id"]
+                page_token = pg.get("access_token")
+                break
+    if not page_token:
+        page_token = account.get("page_access_token")
+
+    # Self-heal: if the IG business id still isn't resolved, query it live from
+    # the connected Page (correct path for IG Professional accounts).
+    if not ig_id:
+        ig_id = await _resolve_ig_business_id(account.get("page_id"), page_token)
 
     if not ig_id:
         return {"status": "error", "message": "No Instagram Business Account found. Reconnect your Facebook account."}
     if not page_token:
-        return {"status": "error", "message": "No Page Access Token. Reconnect your Facebook account."}
+        return {"status": "error", "message": "No Page Access Token for the Instagram-linked page. Reconnect your Facebook account."}
     if not media_url:
         return {"status": "error", "message": "Instagram requires media. Please attach an image or video."}
 
@@ -803,7 +1064,7 @@ async def _ig_publish_image(ig_id: str, page_token: str, image_url: str, caption
             err_msg = err.get("message", "Unknown error")
             err_code = err.get("code", "")
             print(f"[CONTENT] IG image container FAILED: code={err_code} msg={err_msg}")
-            return {"status": "error", "message": f"IG image container failed: {err_msg} (code={err_code})"}
+            return {"status": "error", "message": f"IG image container failed: {err_msg} (code={err_code}) meta={json.dumps(media_data)}"}
 
         container_id = media_data["id"]
         print(f"[CONTENT] IG image: waiting for container {container_id} to finish processing...")
@@ -827,7 +1088,7 @@ async def _ig_publish_image(ig_id: str, page_token: str, image_url: str, caption
                     err = status_data["error"]
                     err_msg = err.get("message", "Unknown error")
                     print(f"[CONTENT] IG image poll {attempt+1}/{max_attempts}: META ERROR: {err_msg}")
-                    return {"status": "error", "message": f"Instagram API error: {err_msg}"}
+                    return {"status": "error", "message": f"Instagram API error: {err_msg} meta={json.dumps(status_data)}"}
 
                 status_code = status_data.get("status_code", "UNKNOWN")
                 print(f"[CONTENT] IG image poll {attempt+1}/{max_attempts}: status={status_code}")
@@ -851,22 +1112,43 @@ async def _ig_publish_image(ig_id: str, page_token: str, image_url: str, caption
             return {"status": "error", "message": f"Instagram image processing timed out after {max_attempts * 3}s."}
 
         print(f"[CONTENT] IG image: publishing container {container_id}...")
-        try:
-            publish_resp = await client.post(
-                f"https://graph.facebook.com/v18.0/{ig_id}/media_publish",
-                data={"creation_id": container_id, "access_token": page_token},
+        max_publish_attempts = 3
+        for pub_attempt in range(max_publish_attempts):
+            try:
+                publish_resp = await client.post(
+                    f"https://graph.facebook.com/v18.0/{ig_id}/media_publish",
+                    data={"creation_id": container_id, "access_token": page_token},
+                )
+                pub_data = publish_resp.json()
+            except Exception as e:
+                print(f"[CONTENT] IG image publish request exception (attempt {pub_attempt+1}): {e}")
+                if pub_attempt < max_publish_attempts - 1:
+                    await asyncio.sleep(5)
+                    continue
+                return {"status": "error", "message": f"IG image publish request failed: {str(e)}"}
+
+            print(f"[CONTENT] IG image publish attempt {pub_attempt+1} FULL response: {json.dumps(pub_data)}")
+
+            if "id" in pub_data:
+                return {"status": "success", "post_id": pub_data["id"]}
+
+            err = pub_data.get("error", {})
+            err_code = err.get("code")
+            err_msg = err.get("message", "")
+            print(f"[CONTENT] IG image publish attempt {pub_attempt+1} failed: code={err_code} msg={err_msg}")
+
+            transient = (
+                err_code == 9003
+                or "not finished" in str(err_msg).lower()
+                or "not ready" in str(err_msg).lower()
+                or "not available" in str(err_msg).lower()
             )
-            pub_data = publish_resp.json()
-        except Exception as e:
-            print(f"[CONTENT] IG image publish request exception: {e}")
-            return {"status": "error", "message": f"IG image publish request failed: {str(e)}"}
+            if transient and pub_attempt < max_publish_attempts - 1:
+                print(f"[CONTENT] IG image publish transient error ({err_msg}); retrying in 5s...")
+                await asyncio.sleep(5)
+                continue
 
-        print(f"[CONTENT] IG image publish FULL response: {json.dumps(pub_data)}")
-
-        if "id" in pub_data:
-            return {"status": "success", "post_id": pub_data["id"]}
-        err = pub_data.get("error", {})
-        return {"status": "error", "message": f"Instagram image publish failed: {err.get('message', pub_data)}"}
+            return {"status": "error", "message": f"Instagram image publish failed: {err_msg} meta={json.dumps(pub_data)}"}
 
 
 async def _ig_publish_video(ig_id: str, page_token: str, video_url: str, caption: str) -> dict:
@@ -903,7 +1185,7 @@ async def _ig_publish_video(ig_id: str, page_token: str, video_url: str, caption
             err_subcode = err.get("error_subcode", "")
             err_fbtrace = err.get("fbtrace_id", "")
             print(f"[CONTENT] IG video container FAILED: type={err_type} code={err_code} subcode={err_subcode} msg={err_msg} fbtrace={err_fbtrace}")
-            return {"status": "error", "message": f"IG video container failed: {err_msg} (code={err_code})"}
+            return {"status": "error", "message": f"IG video container failed: {err_msg} (code={err_code}) meta={json.dumps(media_data)}"}
 
         container_id = media_data["id"]
         print(f"[CONTENT] IG video container created: container_id={container_id}")
@@ -926,7 +1208,7 @@ async def _ig_publish_video(ig_id: str, page_token: str, video_url: str, caption
                     err = status_data["error"]
                     err_msg = err.get("message", "Unknown error")
                     print(f"[CONTENT] IG video poll {attempt+1}/{max_attempts}: META ERROR: {err_msg}")
-                    return {"status": "error", "message": f"Instagram API error: {err_msg}"}
+                    return {"status": "error", "message": f"Instagram API error: {err_msg} meta={json.dumps(status_data)}"}
 
                 status_code = status_data.get("status_code", "UNKNOWN")
 
@@ -949,19 +1231,40 @@ async def _ig_publish_video(ig_id: str, page_token: str, video_url: str, caption
             return {"status": "error", "message": f"Instagram video processing timed out after 3 minutes ({max_attempts} polls)."}
 
         print(f"[CONTENT] IG video: publishing container {container_id}...")
-        try:
-            publish_resp = await client.post(
-                f"https://graph.facebook.com/v18.0/{ig_id}/media_publish",
-                data={"creation_id": container_id, "access_token": page_token},
+        max_publish_attempts = 3
+        for pub_attempt in range(max_publish_attempts):
+            try:
+                publish_resp = await client.post(
+                    f"https://graph.facebook.com/v18.0/{ig_id}/media_publish",
+                    data={"creation_id": container_id, "access_token": page_token},
+                )
+                pub_data = publish_resp.json()
+            except Exception as e:
+                print(f"[CONTENT] IG video publish request exception (attempt {pub_attempt+1}): {e}")
+                if pub_attempt < max_publish_attempts - 1:
+                    await asyncio.sleep(5)
+                    continue
+                return {"status": "error", "message": f"IG video publish request failed: {str(e)}"}
+
+            print(f"[CONTENT] IG video publish attempt {pub_attempt+1} FULL response: {json.dumps(pub_data)}")
+
+            if "id" in pub_data:
+                return {"status": "success", "post_id": pub_data["id"]}
+
+            err = pub_data.get("error", {})
+            err_code = err.get("code")
+            err_msg = err.get("message", "")
+            print(f"[CONTENT] IG video publish attempt {pub_attempt+1} failed: code={err_code} msg={err_msg}")
+
+            transient = (
+                err_code == 9003
+                or "not finished" in str(err_msg).lower()
+                or "not ready" in str(err_msg).lower()
+                or "not available" in str(err_msg).lower()
             )
-            pub_data = publish_resp.json()
-        except Exception as e:
-            print(f"[CONTENT] IG video publish request exception: {e}")
-            return {"status": "error", "message": f"IG video publish request failed: {str(e)}"}
+            if transient and pub_attempt < max_publish_attempts - 1:
+                print(f"[CONTENT] IG video publish transient error ({err_msg}); retrying in 5s...")
+                await asyncio.sleep(5)
+                continue
 
-        print(f"[CONTENT] IG video publish FULL response: {json.dumps(pub_data)}")
-
-        if "id" in pub_data:
-            return {"status": "success", "post_id": pub_data["id"]}
-        err = pub_data.get("error", {})
-        return {"status": "error", "message": f"Instagram video publish failed: {err.get('message', pub_data)}"}
+            return {"status": "error", "message": f"Instagram video publish failed: {err_msg} meta={json.dumps(pub_data)}"}

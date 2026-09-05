@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import api from '../api/axios';
+import api, { extractApiError } from '../api/axios';
 import SEO from '../components/SEO';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AuthShell } from './Login';
@@ -34,8 +34,7 @@ export default function ResetPassword() {
       toast.success(t('auth.pwUpdated'));
       setTimeout(() => navigate('/login'), 2000);
       } catch (err) {
-        const detail = err.response?.data?.detail;
-        toast.error(detail || t('auth.resetError'));
+        toast.error(extractApiError(err, t('auth.resetError')));
       } finally {
       setLoading(false);
     }
