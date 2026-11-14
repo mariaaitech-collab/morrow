@@ -59,3 +59,17 @@ backend/media_uploads/*
 
 # OS
 Thumbs.db
+
+# Firebase service-account keys (full database access: never commit)
+backend/firebase-service-account*.json
+*-firebase-adminsdk-*.json
+
+# OAuth access tokens for connected social accounts (never commit)
+backend/connected_accounts.json
+
+# Server logs and error dumps (may contain request data)
+*.err
+server.log
+backend/*.log
+backend/brandora.db
+brandora.db
