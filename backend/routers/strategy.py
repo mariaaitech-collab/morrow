@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, Form, Request
 import httpx
 import json
 import time
@@ -6,7 +6,10 @@ import logging
 from urllib.parse import urlparse
 
 from config import GEMINI_API_KEY, GEMINI_API_URL, GEMINI_TEXT_MODEL, TAVILY_API_KEY
-from routers.content import PLATFORM_DOMAINS, _tavily_search_platform, _language_rule
+import limits
+from routers.content import PLATFORM_DOMAINS, _tavily_search_platform, _language_rule, _cached_at_str
+from deps import get_current_user
+from usage import get_optional_user, record_usage
 
 router = APIRouter(prefix="/api", tags=["strategy"])
 
@@ -162,7 +165,7 @@ async def _analyze_strategy(topic, flat_competitors, user_content, language=""):
                         {"role": "user", "content": prompt},
                     ],
                     "temperature": 0.5,
-                    "max_tokens": 8192,
+                    "max_tokens": limits.ANALYSIS_MAX_TOKENS,
                 },
             )
     except httpx.TimeoutException:
@@ -199,6 +202,7 @@ async def _analyze_strategy(topic, flat_competitors, user_content, language=""):
 @router.post("/strategy")
 async def elite_strategy(
     request: Request,
+    user: dict = Depends(get_current_user),
     topic: str = Form(...),
     platforms: str = Form('["linkedin","instagram","facebook"]'),
     content: str = Form(""),
@@ -210,12 +214,43 @@ async def elite_strategy(
     if not topic.strip() or len(topic.strip()) < 3:
         raise HTTPException(status_code=400, detail="Topic is required and must be at least 3 characters.")
 
+    limits.validate_input_len(topic, "Topic")
+    limits.validate_input_len(content, "Content")
+
     try:
         platform_list = json.loads(platforms) if platforms else ["linkedin", "instagram", "facebook"]
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail='platforms must be a JSON array like ["linkedin","instagram","facebook"]')
+    active = [p for p in platform_list if p in PLATFORM_DOMAINS]
+    if not active:
+        raise HTTPException(status_code=400, detail="No supported platforms selected. Use linkedin, instagram, facebook.")
 
-    flat, grouped, search_meta = await _live_search_competitors(topic.strip(), platform_list)
+    cache_key = limits.make_cache_key(
+        ["strategy", topic.strip(), sorted(active), content, language]
+    )
+    cached = await limits.get_cached_result(cache_key)
+    if cached:
+        result = cached["payload"]
+        result["cache_note"] = f'Showing your cached strategy from {_cached_at_str(cached["cached_at"])}.'
+        print(f"[STRATEGY] Served cached strategy for topic='{topic[:60]}'")
+        return result
+
+    try:
+        usage_info = await limits.consume(
+            user, "analysis", len(active),
+            action="strategy_analysis", endpoint="POST /api/strategy",
+        )
+    except HTTPException as e:
+        if e.status_code == 402:
+            stale = await limits.get_expired_result(cache_key)
+            if stale:
+                result = stale["payload"]
+                result["cache_note"] = f'Showing your last strategy from {_cached_at_str(stale["cached_at"])}.'
+                result["usage_warning"] = e.detail
+                return result
+        raise
+
+    flat, grouped, search_meta = await _live_search_competitors(topic.strip(), active)
     analysis, model = await _analyze_strategy(topic.strip(), flat, content, language)
 
     result = {
@@ -228,7 +263,13 @@ async def elite_strategy(
         "search_meta": search_meta,
         "generated_at": time.time(),
         "latency_ms": int((time.time() - started) * 1000),
+        "usage": usage_info,
     }
+
+    try:
+        await limits.put_cached_result(cache_key, result)
+    except Exception as e:
+        logger.warning("Failed to cache strategy result: %s", e)
 
     print(
         f"[STRATEGY] Elite strategy done in {result['latency_ms']}ms "
@@ -241,9 +282,6 @@ async def elite_strategy(
         result["latency_ms"],
     )
 
-    from usage import get_optional_user, record_usage
-
-    user = await get_optional_user(request)
     await record_usage(
         user,
         "competitive_analysis",
@@ -342,7 +380,7 @@ async def _analyze_market(profile: dict, flat_competitors: list, language: str =
                         {"role": "user", "content": prompt},
                     ],
                     "temperature": 0.5,
-                    "max_tokens": 8192,
+                    "max_tokens": limits.ANALYSIS_MAX_TOKENS,
                 },
             )
     except httpx.TimeoutException:
@@ -379,6 +417,7 @@ async def _analyze_market(profile: dict, flat_competitors: list, language: str =
 @router.post("/market/competitor-insights")
 async def competitor_insights(
     request: Request,
+    user: dict = Depends(get_current_user),
     brand_niche: str = Form(...),
     target_audience: str = Form(""),
     business_type: str = Form(""),
@@ -398,6 +437,11 @@ async def competitor_insights(
     if not brand_niche.strip() or len(brand_niche.strip()) < 3:
         raise HTTPException(status_code=400, detail="Brand niche is required and must be at least 3 characters.")
 
+    limits.validate_input_len(brand_niche, "Brand niche")
+    limits.validate_input_len(target_audience, "Target audience")
+    limits.validate_input_len(topic, "Topic")
+    limits.validate_input_len(location, "Location")
+
     profile = {
         "niche": brand_niche.strip(),
         "audience": target_audience.strip(),
@@ -410,6 +454,34 @@ async def competitor_insights(
         platform_list = json.loads(platforms) if platforms else ["linkedin", "instagram", "facebook"]
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail='platforms must be a JSON array like ["linkedin","instagram","facebook"]')
+    active = [p for p in platform_list if p in PLATFORM_DOMAINS]
+    if not active:
+        raise HTTPException(status_code=400, detail="No supported platforms selected. Use linkedin, instagram, facebook.")
+
+    cache_key = limits.make_cache_key(
+        ["market", brand_niche.strip(), topic.strip(), location.strip(), sorted(active), language]
+    )
+    cached = await limits.get_cached_result(cache_key)
+    if cached:
+        result = cached["payload"]
+        result["cache_note"] = f'Showing your cached competitor insights from {_cached_at_str(cached["cached_at"])}.'
+        print(f"[STRATEGY] Served cached competitor insights for niche='{brand_niche[:60]}'")
+        return result
+
+    try:
+        usage_info = await limits.consume(
+            user, "analysis", len(active),
+            action="competitor_insights", endpoint="POST /api/market/competitor-insights",
+        )
+    except HTTPException as e:
+        if e.status_code == 402:
+            stale = await limits.get_expired_result(cache_key)
+            if stale:
+                result = stale["payload"]
+                result["cache_note"] = f'Showing your last competitor insights from {_cached_at_str(stale["cached_at"])}.'
+                result["usage_warning"] = e.detail
+                return result
+        raise
 
     # Market search subject: an explicit topic wins, otherwise synthesize one
     # from the brand profile so Tavily searches something meaningful. Location
@@ -451,7 +523,13 @@ async def competitor_insights(
         "search_meta": search_meta,
         "generated_at": time.time(),
         "latency_ms": int((time.time() - started) * 1000),
+        "usage": usage_info,
     }
+
+    try:
+        await limits.put_cached_result(cache_key, result)
+    except Exception as e:
+        logger.warning("Failed to cache market insights: %s", e)
 
     print(
         f"[STRATEGY] Market insights done in {result['latency_ms']}ms "
@@ -463,9 +541,6 @@ async def competitor_insights(
         result["latency_ms"],
     )
 
-    from usage import get_optional_user, record_usage
-
-    user = await get_optional_user(request)
     await record_usage(
         user,
         "market_insights",

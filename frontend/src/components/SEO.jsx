@@ -10,8 +10,8 @@ const DEFAULT_IMAGE = `${SITE_URL}/og-image.png`;
 // (structured data) into <head> for that page. Titles stay <= 60 chars and
 // descriptions <= 155 chars so Google renders them cleanly.
 export default function SEO({
-  title = 'BrandAura | AI Social Media Manager & Content Calendar',
-  description = 'Manage social media, generate AI content and auto-schedule posts across every channel with BrandAura — the all-in-one AI social media management platform.',
+  title = 'Morrow | AI Social Media Manager & Content Calendar',
+  description = 'Manage social media, generate AI content and auto-schedule posts across every channel with Morrow — the all-in-one AI social media management platform.',
   path = '/',
   image = DEFAULT_IMAGE,
   type = 'website',
@@ -31,22 +31,21 @@ export default function SEO({
 
       {/* Open Graph */}
       <meta property="og:type" content={type} />
-      <meta property="og:site_name" content="BrandAura" />
+      <meta property="og:site_name" content="Morrow" />
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
       <meta property="og:image" content={image} />
       <meta property="og:image:width" content="1200" />
       <meta property="og:image:height" content="630" />
-      <meta property="og:image:alt" content="AI social media manager — schedule, generate and analyze content with BrandAura" />
+      <meta property="og:image:alt" content="AI social media manager — schedule, generate and analyze content with Morrow" />
 
       {/* Twitter Card */}
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:site" content="@BrandAura" />
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={image} />
-      <meta name="twitter:image:alt" content="AI social media manager — schedule, generate and analyze content with BrandAura" />
+      <meta name="twitter:image:alt" content="AI social media manager — schedule, generate and analyze content with Morrow" />
 
       {jsonLd && <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>}
     </Helmet>

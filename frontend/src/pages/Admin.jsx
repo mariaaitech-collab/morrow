@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import api from '../api/axios';
 import { useLanguage } from '../i18n/LanguageContext';
-import Navbar from '../components/Navbar';
+import WorkspaceShell from '../components/WorkspaceShell';
 import { isAuthenticated } from '../auth';
 
 export default function Admin({ user, onLogout }) {
@@ -42,22 +42,21 @@ export default function Admin({ user, onLogout }) {
 
   if (user?.email !== 'maria.ai.tech@gmail.com') {
     return (
-      <div className="auth-wrap">
-        <Navbar user={user} onLogout={onLogout} />
+      <WorkspaceShell user={user} onLogout={onLogout} active="admin">
         <div className="auth-card">
           <h1>{t('admin.notAuthorized')}</h1>
           <p className="auth-sub">{t('admin.restricted')}</p>
         </div>
-      </div>
+      </WorkspaceShell>
     );
   }
 
   return (
     <>
-      <Navbar user={user} onLogout={onLogout} active="admin" />
-      <div className="admin-page">
+      <WorkspaceShell user={user} onLogout={onLogout} active="admin">
+      <div className="m-page admin-page">
         <div className="admin-card">
-          <h2>{t('admin.title')}</h2>
+          <h1>{t('admin.title')}</h1>
           <p className="admin-sub">
             {t('admin.sub')}
           </p>
@@ -103,6 +102,7 @@ export default function Admin({ user, onLogout }) {
           </p>
         </div>
       </div>
+      </WorkspaceShell>
     </>
   );
 }

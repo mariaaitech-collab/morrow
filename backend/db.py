@@ -35,6 +35,9 @@ class ScheduledPost(Base):
     recurrence = Column(String(20), default="none")          # none|daily|weekly|monthly
     recurrence_end = Column(DateTime, nullable=True)
     recurring = Column(Boolean, default=False)
+    # Why the AI image for this post could not be made (the post is kept and
+    # goes out text-only). Empty when there was no image failure.
+    media_error = Column(Text, nullable=True)
 
 
 def init_db():
@@ -49,4 +52,6 @@ def init_db():
             conn.execute(text("ALTER TABLE scheduled_posts ADD COLUMN recurrence_end DATETIME"))
         if "recurring" not in existing:
             conn.execute(text("ALTER TABLE scheduled_posts ADD COLUMN recurring BOOLEAN DEFAULT 0"))
+        if "media_error" not in existing:
+            conn.execute(text("ALTER TABLE scheduled_posts ADD COLUMN media_error TEXT"))
     print(f"[DB] SQLite database ready at {DB_PATH}")

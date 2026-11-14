@@ -65,7 +65,7 @@ export default function ActivityHistory() {
           <span className="history-count">{t('activityHistory.records', { count: items.length })}</span>
         </h3>
         <button
-          className="btn btn-sm bg-gradient-to-r from-rose-500/10 to-red-500/10 text-rose-200 border border-rose-500/30 transition-all duration-200 ease-out hover:from-rose-500/20 hover:to-red-500/20 hover:border-rose-400/50 hover:shadow-[0_0_22px_rgba(244,63,94,0.25)] active:scale-95"
+          className="btn btn-sm border border-[var(--border)] bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:border-[var(--danger)] hover:text-[var(--danger-text)]"
           onClick={clearAll}
           disabled={clearing || items.length === 0}
           title={items.length === 0 ? t('activityHistory.nothingToClear') : t('activityHistory.clearAllTitle')}

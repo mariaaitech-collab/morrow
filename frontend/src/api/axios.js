@@ -86,7 +86,11 @@ api.interceptors.response.use(
       return Promise.reject(new Error(tr('auth.upgradeRequired')));
     }
     if (error.response?.status === 503 || error.code === 'ECONNABORTED') {
-      return Promise.reject(new Error(tr('auth.backendDown')));
+      const err = new Error(tr('auth.backendDown'));
+      // Keep the code so callers can tell a slow request (ECONNABORTED)
+      // from a backend that is down, and word their message accordingly.
+      err.code = error.code;
+      return Promise.reject(err);
     }
     return Promise.reject(error);
   }

@@ -7,8 +7,8 @@ export default function Privacy() {
   return (
     <PublicLayout active="privacy">
       <SEO
-        title="Privacy Policy | BrandAura — AI Social Media Manager"
-        description="Read the BrandAura privacy policy to understand how Meveryx collects, uses and protects your data across our AI social media management platform."
+        title="Privacy Policy | Morrow — AI Social Media Manager"
+        description="Read the Morrow privacy policy to understand how Meveryx collects, uses and protects your data across our AI social media management platform."
         path="/privacy"
       />
       <article className="prose prose-invert max-w-4xl px-6 py-32 mx-auto">

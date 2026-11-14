@@ -43,8 +43,8 @@ export default function ResetPassword() {
   return (
     <>
     <SEO
-      title="Set New Password | BrandAura — AI Social Media Manager"
-      description="Create a new password for your BrandAura account and get back to managing your social media content and schedule."
+      title="Set New Password | Morrow — AI Social Media Manager"
+      description="Create a new password for your Morrow account and get back to managing your social media content and schedule."
       path="/reset-password"
     />
     <AuthShell

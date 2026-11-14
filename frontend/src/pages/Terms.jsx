@@ -7,8 +7,8 @@ export default function Terms() {
   return (
     <PublicLayout active="terms">
       <SEO
-        title="Terms of Service | BrandAura — AI Social Media Manager"
-        description="Review the BrandAura terms of service that govern your use of our AI social media management, content generation and scheduling platform."
+        title="Terms of Service | Morrow — AI Social Media Manager"
+        description="Review the Morrow terms of service that govern your use of our AI social media management, content generation and scheduling platform."
         path="/terms"
       />
       <article className="prose prose-invert max-w-4xl px-6 py-32 mx-auto">

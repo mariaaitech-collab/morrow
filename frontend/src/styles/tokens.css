@@ -1,0 +1,133 @@
+/* =============================================================
+   Morrow design tokens
+   -------------------------------------------------------------
+   The ONLY file in the app that may contain colour values.
+   Components reference these variables, never hex codes.
+   One light theme; the purple sidebar is the only dark surface.
+   ============================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #F8FAFC;            /* app canvas */
+  --surface: #FFFFFF;       /* cards, modals, inputs-on-focus */
+  --surface-2: #F1F5F9;     /* inputs, chips, segmented-tab track, skeletons */
+  --border: #E2E8F0;
+
+  /* Text */
+  --text: #0F172A;          /* headings + primary text */
+  --text-body: #475569;     /* paragraphs */
+  --text-muted: #5B6B80;    /* meta, labels, captions (AA on white) */
+  --text-soft: #94A3B8;     /* decorative only; never for essential copy */
+
+  /* Brand */
+  --accent: #00D2C8;        /* TEAL: primary buttons, active toggles, "today" */
+  --accent-hover: #00B8AF;
+  --accent-text: #08796F;   /* teal that is safe as TEXT on white */
+  --accent-2: #4A15A3;      /* PURPLE: secondary emphasis, active tabs/filters */
+  --highlight: #FACC15;     /* YELLOW: reserved high-emphasis actions */
+  --highlight-hover: #EAB308;
+  --on-highlight: #1F2937;  /* text on yellow */
+  --on-accent: #0F172A;     /* text on teal (dark navy, never white) */
+  --cta: var(--accent);
+  --cta-hover: var(--accent-hover);
+  --on-cta: #0F172A;
+  --brand-gradient: linear-gradient(135deg, #00D2C8 0%, #4A15A3 100%);
+  --mint: #E6FAF9;          /* soft teal icon-tile background */
+
+  /* Status */
+  --success: #10B981;
+  --warning: #D97706;
+  --danger:  #DC2626;
+  --on-danger: #FFFFFF;
+
+  /* Sidebar (the only dark surface) */
+  --sidebar: #200B48;
+  --sidebar-text: #FFFFFF;
+  --sidebar-muted: #B9AEE0;
+  --sidebar-border: #3A2371;
+  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-accent: #00D2C8;
+  --sidebar-active: color-mix(in srgb, var(--sidebar-accent) 18%, var(--sidebar));
+
+  /* Social platform identity (tints and icon tiles only) */
+  --platform-instagram: #E1306C;
+  --platform-facebook:  #1877F2;
+  --platform-linkedin:  #0A66C2;
+  --platform-tiktok:    #FE2C55;
+  --platform-instagram-gradient: linear-gradient(45deg, #F58529, #DD2A7B 45%, #8134AF 75%, #515BD4);
+
+  /* "Tool" shortcut cards */
+  /* Dark, professional Morrow shades (purple, teal, blue, navy), white text. */
+  --tool-create: #200B48;   --tool-create-2: #4A15A3;   --on-tool-create: #FFFFFF;
+  --tool-planner: #052E2C;  --tool-planner-2: #0B5F5A;  --on-tool-planner: #FFFFFF;
+  --tool-schedule: #0B1A3E; --tool-schedule-2: #1E3A8A; --on-tool-schedule: #FFFFFF;
+  --tool-channels: #0F172A; --tool-channels-2: #24365C; --on-tool-channels: #FFFFFF;
+
+  /* Pricing tiers */
+  --tier-starter: var(--accent);      --tier-starter-text: var(--accent-text);
+  --tier-plus: var(--accent-2);       --tier-plus-text: var(--accent-2);
+  --tier-enterprise: #2547D0;         --tier-enterprise-text: #2547D0;
+
+  /* Typography */
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-title: 30px;
+  --fs-stat: 38px;
+  --fs-section: 19px;
+  --fs-body: 15px;
+  --fs-meta: 14px;
+  --fs-badge: 12.5px;
+  --fw-strong: 600;  --fw-medium: 500;  --fw-regular: 400;
+  --lh-tight: 1.25;  --lh-body: 1.5;
+
+  /* Shape + spacing */
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --radius-pill: 999px;
+  --card-padding: 28px;
+  --control-height: 40px;
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px;
+
+  /* Layout */
+  --sidebar-width: 104px;
+  --sidebar-rail: 76px;
+  --sidebar-expanded: 248px;   /* sidebar opened with the menu button */
+  --topbar-height: 72px;
+  --page-max: 1320px;
+
+  /* Derived tints */
+  --accent-soft:   color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --accent-2-soft: color-mix(in srgb, var(--accent-2) 12%, var(--surface));
+  --success-soft:  color-mix(in srgb, var(--success) 12%, var(--surface));
+  --warning-soft:  color-mix(in srgb, var(--warning) 12%, var(--surface));
+  --danger-soft:   color-mix(in srgb, var(--danger) 12%, var(--surface));
+  --cta-soft:      color-mix(in srgb, var(--cta) 14%, var(--surface));
+  --accent-2-text: color-mix(in srgb, var(--accent-2) 50%, var(--text));
+  --success-text:  color-mix(in srgb, var(--success) 50%, var(--text));
+  --warning-text:  color-mix(in srgb, var(--warning) 50%, var(--text));
+  --danger-text:   color-mix(in srgb, var(--danger) 50%, var(--text));
+
+  /* Effects */
+  --shadow-hover:   0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  --shadow-popover: 0 12px 32px color-mix(in srgb, var(--text) 14%, transparent);
+  --ring:           0 0 0 2px var(--accent);
+  --ring-offset:    0 0 0 2px var(--surface), 0 0 0 4px var(--accent-2);
+  --scrim:          color-mix(in srgb, var(--sidebar) 55%, transparent);
+}
+
+/* Layering scale (not colours; kept here so every layer is decided in one place). */
+:root {
+  --z-base: 1;       /* base content */
+  --z-topbar: 20;    /* sticky topbar / headers */
+  --z-popover: 40;   /* popovers, dropdowns, tooltips, floating launcher */
+  --z-drawer: 50;    /* mobile sidebar drawer + its scrim */
+  --z-modal: 60;     /* modals / dialogs */
+  --z-toast: 70;     /* toasts / notifications */
+}
+
+/* Phone layout: cards get tighter padding. */
+@media (max-width: 560px) {
+  :root { --card-padding: 20px; }
+}

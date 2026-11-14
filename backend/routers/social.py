@@ -1,22 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import List
 import httpx
 import json
 import os
-import asyncio
 from urllib.parse import urlencode
 from models import SocialAccount
 from deps import get_current_user
-import mongodb
+import firebase_db
 from config import (
     FACEBOOK_CLIENT_ID, FACEBOOK_CLIENT_SECRET, FACEBOOK_REDIRECT_URI,
     LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI,
     INSTAGRAM_CLIENT_ID, INSTAGRAM_CLIENT_SECRET, INSTAGRAM_REDIRECT_URI,
-    ADMIN_EMAIL, FRONTEND_URL,
+    TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REDIRECT_URI,
+    ADMIN_EMAIL, FRONTEND_URL, META_ENGAGEMENT_SCOPES,
+    GRAPH_BASE, FB_OAUTH_DIALOG,
+)
+from tiktok_client import TikTokError, tiktok
+
+# Facebook connect: only permissions included in the Meta app's use cases. Any
+# scope outside them makes the dialog fail with "Invalid Scopes: ...".
+FACEBOOK_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,pages_read_user_content,public_profile"
+
+# Instagram connect: publishing scopes + optional engagement scopes (read and
+# reply to comments / DMs) used by the AI Auto-Responder.
+_META_BASE_SCOPES = "pages_show_list,pages_read_engagement,business_management,instagram_basic,instagram_content_publish"
+META_SCOPES = ",".join(
+    dict.fromkeys(
+        s.strip()
+        for s in (_META_BASE_SCOPES + "," + (META_ENGAGEMENT_SCOPES or "")).split(",")
+        if s.strip()
+    )
 )
 
 router = APIRouter(prefix="/api/social", tags=["social"])
+bearer_scheme = HTTPBearer(auto_error=False)
 
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "connected_accounts.json")
 
@@ -35,6 +54,12 @@ def _user_accounts(user_id: str) -> dict:
 def get_user_accounts(user_id: str) -> dict:
     """Public helper: a copy of the given user's connected accounts."""
     return dict(connected_accounts.get(user_id, {}))
+
+
+def save_user_account(user_id: str, platform: str, account: dict) -> None:
+    """Public helper: persist a single platform account for a user."""
+    _user_accounts(user_id)[platform] = account
+    _save_accounts()
 
 
 def _load_accounts():
@@ -65,24 +90,21 @@ def _save_accounts():
 _load_accounts()
 
 
-def _migrate_legacy_flat_accounts():
+async def migrate_legacy_flat_accounts():
     """Migrate the old flat {platform: account} file into the per-user layout.
 
     Legacy accounts (pre-multi-user) are bound to the administrator's user id so
     they stay usable by their likely owner without ever leaking to other users.
+    Runs once at startup (main.py), where the database client's event loop is live.
     """
     global connected_accounts
     if not connected_accounts:
         return
     # Detect the legacy flat layout: top-level keys are platform names.
-    if any(k in ("facebook", "linkedin", "instagram") for k in connected_accounts):
+    if any(k in ("facebook", "linkedin", "instagram", "tiktok") for k in connected_accounts):
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-        try:
-            admin = loop.run_until_complete(mongodb.users.find_one({"email": ADMIN_EMAIL.lower()}))
-            owner_id = str(admin["_id"]) if admin else "__legacy_orphan__"
+            admin = await firebase_db.user_by_email(ADMIN_EMAIL)
+            owner_id = admin["id"] if admin else "__legacy_orphan__"
             # Move only platform-shaped entries; drop any other junk.
             legacy = {k: v for k, v in connected_accounts.items() if isinstance(v, dict) and "access_token" in v}
             connected_accounts = {owner_id: legacy}
@@ -91,16 +113,13 @@ def _migrate_legacy_flat_accounts():
         except Exception as e:
             print(f"[SOCIAL] Legacy migration skipped: {e}")
 
-
-_migrate_legacy_flat_accounts()
-
 PLATFORM_CONFIGS = {
     "facebook": {
-        "auth_url_template": "https://www.facebook.com/v18.0/dialog/oauth?client_id={client_id}&redirect_uri={redirect_uri}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish&response_type=code&auth_type=rerequest",
+        "auth_url_template": FB_OAUTH_DIALOG + "?client_id={client_id}&redirect_uri={redirect_uri}&scope=" + FACEBOOK_SCOPES + "&response_type=code&auth_type=rerequest",
         "client_id": FACEBOOK_CLIENT_ID,
         "client_secret": FACEBOOK_CLIENT_SECRET,
         "redirect_uri": FACEBOOK_REDIRECT_URI,
-        "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "token_url": f"{GRAPH_BASE}/oauth/access_token",
     },
     "linkedin": {
         "auth_url_template": "https://www.linkedin.com/oauth/v2/authorization?client_id={client_id}&redirect_uri={redirect_uri}&scope=openid+profile+w_member_social&response_type=code",
@@ -110,34 +129,62 @@ PLATFORM_CONFIGS = {
         "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
     },
     "instagram": {
-        "auth_url_template": "https://www.facebook.com/v18.0/dialog/oauth?client_id={client_id}&redirect_uri={redirect_uri}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish&response_type=code&auth_type=rerequest",
+        "auth_url_template": FB_OAUTH_DIALOG + "?client_id={client_id}&redirect_uri={redirect_uri}&scope=" + META_SCOPES + "&response_type=code&auth_type=rerequest",
         "client_id": INSTAGRAM_CLIENT_ID,
         "client_secret": INSTAGRAM_CLIENT_SECRET,
         "redirect_uri": INSTAGRAM_REDIRECT_URI,
-        "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "token_url": f"{GRAPH_BASE}/oauth/access_token",
+    },
+    "tiktok": {
+        # TikTok mandates PKCE, so the authorize URL cannot be a static
+        # template: it must carry a fresh code_challenge per attempt. The real
+        # connect flow is GET /api/auth/tiktok/login (it also embeds the `state`
+        # JWT because the callback runs server-side). This entry only feeds the
+        # /social/accounts listing so the tile shows up in the UI.
+        "auth_url_template": None,
+        "client_id": TIKTOK_CLIENT_KEY,
+        "client_secret": TIKTOK_CLIENT_SECRET,
+        "redirect_uri": TIKTOK_REDIRECT_URI,
+        "token_url": "https://open.tiktokapis.com/v2/oauth/token/",
     },
 }
 
 
 @router.get("/accounts", response_model=List[SocialAccount])
 def get_accounts(user: dict = Depends(get_current_user)):
-    own = _user_accounts(str(user["_id"]))
+    own = _user_accounts(user["id"])
     return [
         SocialAccount(
             platform=platform,
             account_name=own.get(platform, {}).get("account_name", ""),
             connected=platform in own,
-            auth_url=None if platform in own else info["auth_url_template"].format(
-                client_id=info["client_id"],
-                redirect_uri=info["redirect_uri"],
-            ),
+            auth_url=None if platform in own else _platform_auth_url(platform, info),
         )
         for platform, info in PLATFORM_CONFIGS.items()
     ]
 
 
+def _platform_auth_url(platform: str, info: dict):
+    """Build the connect URL for a platform (TikTok goes through tiktok_client)."""
+    if platform == "tiktok":
+        # Needs a per-attempt PKCE challenge, so it is issued by
+        # /api/auth/tiktok/login (which also carries the state JWT).
+        return "/api/auth/tiktok/login"
+    template = info.get("auth_url_template")
+    if not template:
+        return None
+    return template.format(
+        client_id=info["client_id"],
+        redirect_uri=info["redirect_uri"],
+    )
+
+
 @router.get("/connect/{platform}")
-def connect_platform(platform: str):
+async def connect_platform(
+    platform: str,
+    response: Response,
+    user: dict = Depends(get_current_user),
+):
     if platform not in PLATFORM_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Platform '{platform}' not supported")
     config = PLATFORM_CONFIGS[platform]
@@ -146,6 +193,13 @@ def connect_platform(platform: str):
             status_code=500,
             detail=f"{platform.title()} client ID not configured. Add it to the .env file.",
         )
+    if platform == "tiktok":
+        # TikTok requires PKCE, so the authorize URL is minted per attempt. The
+        # verifier and the connecting user id are stored server-side, keyed by
+        # an opaque single-use `state` nonce (the JWT never leaves the app),
+        # which is also set as a cookie the callback checks.
+        from routers.auth import create_tiktok_authorization
+        return await create_tiktok_authorization(user, response)
     auth_url = config["auth_url_template"].format(
         client_id=config["client_id"],
         redirect_uri=config["redirect_uri"],
@@ -196,14 +250,15 @@ async def _fetch_fb_pages(user_token: str) -> list:
     """Fetch Facebook Pages with their Page Access Tokens and Instagram Business Account IDs."""
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(
-            "https://graph.facebook.com/v18.0/me/accounts",
+            f"{GRAPH_BASE}/me/accounts",
             params={
                 "fields": "id,name,access_token,instagram_business_account",
                 "access_token": user_token,
             },
         )
     data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-    print(f"CRITICAL DEBUG - META ACCOUNTS RESPONSE: HTTP {resp.status_code} {resp.text}")
+    # Never log resp.text: it contains every Page access token.
+    print(f"[SOCIAL] /me/accounts HTTP {resp.status_code}: {len(data.get('data') or [])} page(s)")
     if "data" in data:
         return data["data"]
     print(f"[SOCIAL] Failed to fetch pages: {data}")
@@ -328,7 +383,7 @@ async def _resolve_callback_user(request: Request, access_token: str = "") -> di
     if not email:
         raise HTTPException(status_code=401, detail="Invalid token payload.")
 
-    user = await mongodb.users.find_one({"email": email})
+    user = await firebase_db.user_by_email(email)
     if not user:
         raise HTTPException(status_code=401, detail="Account no longer exists.")
     return await apply_dev_override(user)
@@ -372,11 +427,11 @@ async def auth_callback(
             me_resp = None
             async with httpx.AsyncClient(timeout=15.0) as client:
                 me_resp = await client.get(
-                    "https://graph.facebook.com/v18.0/me",
+                    f"{GRAPH_BASE}/me",
                     params={"fields": "name", "access_token": long_lived_token},
                 )
             me_data = me_resp.json()
-            print(f"CRITICAL DEBUG - META /me RESPONSE: HTTP {me_resp.status_code} {me_resp.text}")
+            print(f"[SOCIAL] Meta /me HTTP {me_resp.status_code}")
             if "name" in me_data:
                 account_name = me_data["name"]
 
@@ -419,7 +474,7 @@ async def auth_callback(
                 for pg in pages
             ]
 
-            _user_accounts(str(user["_id"]))[platform] = {
+            _user_accounts(user["id"])[platform] = {
                 "account_name": account_name,
                 "access_token": long_lived_token,
                 "page_id": page_id,
@@ -427,7 +482,7 @@ async def auth_callback(
                 "instagram_business_id": ig_business_id,
                 "pages": pages_saved,
             }
-            print(f"CRITICAL DEBUG - SAVING TO DB: {_user_accounts(str(user['_id']))[platform]}")
+            print(f"[SOCIAL] Saving {platform} connection: {len(pages_saved)} page(s), ig={'yes' if ig_business_id else 'no'}")
 
         elif platform == "linkedin":
             # The LinkedIn API REJECTS the hardcoded "urn:li:person:me" author.
@@ -451,7 +506,7 @@ async def auth_callback(
             except Exception as e:
                 print(f"[SOCIAL] LinkedIn userinfo fetch failed: {e}")
 
-            _user_accounts(str(user["_id"]))[platform] = {
+            _user_accounts(user["id"])[platform] = {
                 "account_name": lk_name,
                 "access_token": user_token,
                 "provider_account_id": provider_account_id,
@@ -474,17 +529,23 @@ async def auth_callback(
 
 
 @router.delete("/disconnect/{platform}")
-def disconnect_platform(platform: str, user: dict = Depends(get_current_user)):
+async def disconnect_platform(platform: str, user: dict = Depends(get_current_user)):
     # HARD DISCONNECT: physically purge the ENTIRE platform record — the pages
     # array, access_token, page_access_token, instagram_business_id, everything.
     # A disconnected account must not linger (even as `{}` or an empty `pages`),
     # otherwise reconnect + self-heal refreshes resurrect stale OAuth data.
-    uid = str(user["_id"])
+    uid = user["id"]
     own = _user_accounts(uid)
     if platform not in own:
         raise HTTPException(status_code=404, detail=f"Platform '{platform}' not connected")
 
     removed = own.pop(platform, None)
+    if platform == "tiktok" and (removed or {}).get("access_token") and tiktok.is_configured():
+        # Best-effort: revoke the grant on TikTok's side too.
+        try:
+            await tiktok.revoke(removed["access_token"])
+        except Exception as e:
+            print(f"[SOCIAL] TikTok token revoke failed (ignored): {e}")
     # Prune the user entry entirely once they have zero platforms left, so the
     # JSON file never retains an empty shell for this user.
     if not own:
@@ -492,3 +553,64 @@ def disconnect_platform(platform: str, user: dict = Depends(get_current_user)):
     _save_accounts()
     print(f"[SOCIAL] Hard-disconnected {platform} for user {uid}; removed={{platforms: {len(removed or {})}}}")
     return {"platform": platform, "status": "disconnected"}
+
+
+def find_owners_by_external_id(platform: str, external_id: str) -> list[tuple[str, dict]]:
+    """Return [(user_id, account)] whose connected `platform` account owns `external_id`.
+
+    Used by the webhook receiver to route an inbound comment/DM to the right
+    BrandAura user. Matches Facebook Page ids, Instagram Business ids,
+    LinkedIn person/organization ids and TikTok open_ids.
+    """
+    external_id = str(external_id or "")
+    if not external_id:
+        return []
+    matches = []
+    for user_id, platforms in connected_accounts.items():
+        if not isinstance(platforms, dict):
+            continue
+        acct = platforms.get(platform)
+        if platform == "instagram" and not isinstance(acct, dict):
+            # Instagram Business accounts are reached through the linked
+            # Facebook Page, so a Facebook-only connection still owns them.
+            acct = platforms.get("facebook")
+        if not isinstance(acct, dict):
+            continue
+        ids = set()
+        if platform in ("facebook", "instagram"):
+            ids.update({str(acct.get("page_id") or ""), str(acct.get("instagram_business_id") or "")})
+            for page in acct.get("pages") or []:
+                ids.update({str(page.get("id") or ""), str(page.get("instagram_business_id") or "")})
+        elif platform == "linkedin":
+            pid = str(acct.get("provider_account_id") or "")
+            ids.update({pid, f"urn:li:person:{pid}" if pid else ""})
+            for org in acct.get("organization_ids") or []:
+                ids.update({str(org), f"urn:li:organization:{org}"})
+        elif platform == "tiktok":
+            ids.update({str(acct.get("open_id") or ""), str(acct.get("business_id") or "")})
+        ids.discard("")
+        if external_id in ids:
+            matches.append((user_id, acct))
+    return matches
+
+
+def engagement_account(user_id: str, platform: str) -> dict:
+    """Account used to READ/REPLY on `platform` (Instagram falls back to Facebook)."""
+    own = get_user_accounts(user_id)
+    acct = own.get(platform)
+    if not acct and platform == "instagram":
+        fb = own.get("facebook") or {}
+        if fb.get("instagram_business_id") or any(p.get("instagram_business_id") for p in fb.get("pages") or []):
+            acct = fb
+    return dict(acct or {})
+
+
+def page_token_for(account: dict, page_or_ig_id: str) -> tuple[str | None, str | None]:
+    """Return (page_id, page_access_token) for a FB page id or IG business id."""
+    target = str(page_or_ig_id or "")
+    for page in account.get("pages") or []:
+        if target and target in (str(page.get("id")), str(page.get("instagram_business_id"))):
+            return page.get("id"), page.get("access_token")
+    if account.get("page_access_token"):
+        return account.get("page_id"), account.get("page_access_token")
+    return None, None

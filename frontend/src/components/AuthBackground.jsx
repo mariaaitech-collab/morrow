@@ -1,12 +1,13 @@
 import { useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float } from '@react-three/drei';
+import useTokenColors from '../styles/tokenColors';
 
 function ease(current, target, lambda, delta) {
   return current + (target - current) * (1 - Math.pow(lambda, delta * 60));
 }
 
-function AuraCore() {
+function AuraCore({ colors }) {
   const core = useRef();
   const ringA = useRef();
   const ringB = useRef();
@@ -33,8 +34,8 @@ function AuraCore() {
       <mesh ref={core}>
         <icosahedronGeometry args={[1.1, 12]} />
         <meshStandardMaterial
-          color="#D6588A"
-          emissive="#7A2B52"
+          color={colors.accent}
+          emissive={colors.accentHover}
           emissiveIntensity={0.3}
           metalness={0.4}
           roughness={0.2}
@@ -45,8 +46,8 @@ function AuraCore() {
       <mesh ref={ringA} rotation={[Math.PI / 2.15, 0.25, 0]}>
         <torusGeometry args={[2.0, 0.01, 10, 120]} />
         <meshStandardMaterial
-          color="#D6588A"
-          emissive="#D6588A"
+          color={colors.accent}
+          emissive={colors.accent}
           emissiveIntensity={0.6}
           transparent
           opacity={0.45}
@@ -55,15 +56,15 @@ function AuraCore() {
       <mesh ref={ringB} rotation={[Math.PI / 1.72, -0.45, 0.35]}>
         <torusGeometry args={[2.5, 0.008, 10, 120]} />
         <meshStandardMaterial
-          color="#D6588A"
-          emissive="#7A2B52"
+          color={colors.accent}
+          emissive={colors.accentHover}
           emissiveIntensity={0.5}
           transparent
           opacity={0.3}
         />
       </mesh>
-      <OrbitNodes radius={2.0} count={4} tilt={[Math.PI / 2.15, 0.25, 0]} speed={0.14} size={0.08} color="#00d9a8" />
-      <OrbitNodes radius={2.5} count={5} tilt={[Math.PI / 1.72, -0.45, 0.35]} speed={-0.1} size={0.06} color="#D6588A" />
+      <OrbitNodes radius={2.0} count={4} tilt={[Math.PI / 2.15, 0.25, 0]} speed={0.14} size={0.08} color={colors.accent} />
+      <OrbitNodes radius={2.5} count={5} tilt={[Math.PI / 1.72, -0.45, 0.35]} speed={-0.1} size={0.06} color={colors.accentHover} />
     </group>
   );
 }
@@ -114,7 +115,7 @@ function TechNode({ radius, detail, color, speed, position }) {
   );
 }
 
-function DustParticles({ count = 180 }) {
+function DustParticles({ count = 180, color }) {
   const points = useRef();
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
@@ -136,12 +137,12 @@ function DustParticles({ count = 180 }) {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" count={count} array={positions} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial size={0.02} color="#9be8d8" transparent opacity={0.35} sizeAttenuation depthWrite={false} />
+      <pointsMaterial size={0.02} color={color} transparent opacity={0.35} sizeAttenuation depthWrite={false} />
     </points>
   );
 }
 
-function GlassPanel({ position, rotation, size = [1.6, 1.0], depth = 0.3 }) {
+function GlassPanel({ position, rotation, size = [1.6, 1.0], depth = 0.3, color }) {
   const mesh = useRef();
   const baseRotation = useMemo(() => rotation, [rotation]);
   useFrame((state, delta) => {
@@ -154,12 +155,13 @@ function GlassPanel({ position, rotation, size = [1.6, 1.0], depth = 0.3 }) {
   return (
     <mesh ref={mesh} position={position} rotation={baseRotation}>
       <planeGeometry args={[size[0], size[1]]} />
-      <meshBasicMaterial color="#bfe9e0" transparent opacity={0.06} side="DoubleSide" depthWrite={false} />
+      <meshBasicMaterial color={color} transparent opacity={0.06} side="DoubleSide" depthWrite={false} />
     </mesh>
   );
 }
 
 export default function AuthBackground() {
+  const colors = useTokenColors();
   return (
     <div className="auth-bg-canvas">
       <Canvas
@@ -170,17 +172,17 @@ export default function AuthBackground() {
       >
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 6, 5]} intensity={0.9} />
-        <pointLight position={[-5, -2, 3]} intensity={30} distance={20} decay={2} color="#D6588A" />
-        <pointLight position={[6, 3, -3]} intensity={40} distance={24} decay={2} color="#7A2B52" />
+        <pointLight position={[-5, -2, 3]} intensity={30} distance={20} decay={2} color={colors.accent} />
+        <pointLight position={[6, 3, -3]} intensity={40} distance={24} decay={2} color={colors.accentHover} />
 
-        <AuraCore />
-        <DustParticles />
-        <GlassPanel position={[-4.2, -0.8, -2.5]} rotation={[0.12, 0.4, 0.03]} size={[1.7, 1.0]} depth={0.25} />
-        <GlassPanel position={[4.5, -1.2, -3]} rotation={[-0.1, -0.4, -0.02]} size={[1.3, 0.85]} depth={0.35} />
-        <GlassPanel position={[-3.0, 2.0, -3.5]} rotation={[0.08, 0.6, 0.05]} size={[1.1, 0.7]} depth={0.2} />
-        <TechNode radius={0.35} detail={1} color="#7A2B52" speed={0.15} position={[-3.8, 1.8, -2.5]} />
-        <TechNode radius={0.25} detail={1} color="#D6588A" speed={-0.2} position={[3.9, 2.3, -3]} />
-        <TechNode radius={0.2} detail={0} color="#D6588A" speed={0.25} position={[2.8, -2.2, -1.5]} />
+        <AuraCore colors={colors} />
+        <DustParticles color={colors.textMuted} />
+        <GlassPanel position={[-4.2, -0.8, -2.5]} rotation={[0.12, 0.4, 0.03]} size={[1.7, 1.0]} depth={0.25} color={colors.border} />
+        <GlassPanel position={[4.5, -1.2, -3]} rotation={[-0.1, -0.4, -0.02]} size={[1.3, 0.85]} depth={0.35} color={colors.border} />
+        <GlassPanel position={[-3.0, 2.0, -3.5]} rotation={[0.08, 0.6, 0.05]} size={[1.1, 0.7]} depth={0.2} color={colors.border} />
+        <TechNode radius={0.35} detail={1} color={colors.accentHover} speed={0.15} position={[-3.8, 1.8, -2.5]} />
+        <TechNode radius={0.25} detail={1} color={colors.accent} speed={-0.2} position={[3.9, 2.3, -3]} />
+        <TechNode radius={0.2} detail={0} color={colors.accent} speed={0.25} position={[2.8, -2.2, -1.5]} />
       </Canvas>
     </div>
   );

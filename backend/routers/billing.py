@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
 from config import utc_now
-import mongodb
+import firebase_db
+import limits
 from deps import get_current_user, compute_subscription, require_admin
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
@@ -25,8 +26,12 @@ TRIAL_DAYS = 30
 
 # Per-plan one-time token allotment granted on a successful purchase.
 PLAN_CONFIG = {
-    "standard": {"tokens": 50, "days": 14, "price": "$1.99"},
-    "premium": {"tokens": 150, "days": 30, "price": "$3.99"},
+    "starter": {"tokens": 50, "days": 30, "price": "1,500 PKR", "price_range": "1,500 PKR"},
+    "standard": {"tokens": 50, "days": 30, "price": "1,200 PKR", "price_range": "1,000 - 1,500 PKR"},
+    "plus": {"tokens": 150, "days": 30, "price": "2,800 PKR", "price_range": "2,000 - 4,000 PKR"},
+    "premium": {"tokens": 150, "days": 30, "price": "2,800 PKR", "price_range": "2,000 - 4,000 PKR"},
+    "enterprise": {"tokens": 500, "days": 30, "price": "6,500 PKR", "price_range": "6,000+ PKR / Custom"},
+    "pro": {"tokens": 500, "days": 30, "price": "6,500 PKR", "price_range": "6,000+ PKR / Custom"},
 }
 
 
@@ -34,8 +39,25 @@ class ActivateRequest(BaseModel):
     email: EmailStr
 
 
+@firebase_db.async_transactional
+async def _apply_plan(transaction, ref, fields: dict, now, add_tokens: int = 0) -> None:
+    """Write the plan fields; quota cycles stay anchored on the first activation date."""
+    snap = await ref.get(transaction=transaction)
+    current = snap.to_dict() or {}
+    update = {**fields, "subscription_started_at": current.get("subscription_started_at") or now}
+    if add_tokens:
+        update["free_tokens"] = int(current.get("free_tokens", 0) or 0) + add_tokens
+    transaction.update(ref, update)
+
+
+async def _set_plan(user_id: str, fields: dict, now, add_tokens: int = 0) -> dict:
+    ref = firebase_db.users.document(user_id)
+    await _apply_plan(firebase_db.db.transaction(), ref, fields, now, add_tokens)
+    return await firebase_db.get(ref)
+
+
 class PaymentSuccessRequest(BaseModel):
-    plan: str = Field(..., description="Purchased plan: 'standard' or 'premium'")
+    plan: str = Field(..., description="Purchased plan: 'starter', 'plus', 'enterprise', 'standard', or 'premium'")
     session_id: str | None = None
     transaction_id: str | None = None
 
@@ -44,6 +66,17 @@ class PaymentSuccessRequest(BaseModel):
 async def billing_status(user: dict = Depends(get_current_user)):
     """Return the caller's current plan / trial / paywall status."""
     return compute_subscription(user)
+
+
+@router.get("/usage")
+async def billing_usage(user: dict = Depends(get_current_user)):
+    """Return the caller's 30-day quota/cost usage for the frontend UI."""
+    usage = await limits.get_usage(user)
+    return {
+        "user": user.get("email"),
+        "plan": user.get("plan", "free"),
+        "usage": usage,
+    }
 
 
 @admin_router.post("/api/admin/activate-user")
@@ -57,27 +90,21 @@ async def admin_activate_user(
     full year and marks them as subscribed so the paywall clears immediately.
     """
     email = payload.email.strip().lower()
-    target = await mongodb.users.find_one({"email": email})
+    target = await firebase_db.user_by_email(email)
     if not target:
         raise HTTPException(status_code=404, detail="User not found.")
 
     now = utc_now()
-    await mongodb.users.update_one(
-        {"_id": target["_id"]},
-        {
-            "$set": {
-                "subscribed": True,
-                "plan": "pro",
-                # Long activation window; admin can re-run to extend.
-                "subscription_ends_at": now + timedelta(days=365),
-                "trial_ends_at": now + timedelta(days=365),
-            }
-        },
-    )
-    updated = await mongodb.users.find_one({"_id": target["_id"]})
+    updated = await _set_plan(target["id"], {
+        "subscribed": True,
+        "plan": "pro",
+        # Long activation window; admin can re-run to extend.
+        "subscription_ends_at": now + timedelta(days=365),
+        "trial_ends_at": now + timedelta(days=365),
+    }, now)
     return {
         **compute_subscription(updated),
-        "message": f"{email} has been activated as BrandAura Pro.",
+        "message": f"{email} has been activated as Morrow Pro.",
     }
 
 
@@ -92,19 +119,13 @@ async def subscribe(user: dict = Depends(get_current_user), plan: str = "pro"):
         raise HTTPException(status_code=400, detail="Unsupported plan.")
 
     now = utc_now()
-    await mongodb.users.update_one(
-        {"_id": user["_id"]},
-        {
-            "$set": {
-                "subscribed": True,
-                "plan": "pro",
-                "subscription_ends_at": now + timedelta(days=30),
-                "trial_ends_at": now + timedelta(days=TRIAL_DAYS),  # keep trial clock full
-            }
-        },
-    )
-    updated = await mongodb.users.find_one({"_id": user["_id"]})
-    return {**compute_subscription(updated), "message": "Welcome to BrandAura Pro!"}
+    updated = await _set_plan(user["id"], {
+        "subscribed": True,
+        "plan": "pro",
+        "subscription_ends_at": now + timedelta(days=30),
+        "trial_ends_at": now + timedelta(days=TRIAL_DAYS),  # keep trial clock full
+    }, now)
+    return {**compute_subscription(updated), "message": "Welcome to Morrow Pro!"}
 
 
 @router.post("/success")
@@ -128,20 +149,12 @@ async def payment_success(payload: PaymentSuccessRequest, user: dict = Depends(g
     # additive so a re-purchase / renewal stacks on any remaining balance,
     # but an existing finite balance is never silently reset to the new plan's
     # allotment (prevents refund-and-rebuy token farming beyond the buying cap).
-    await mongodb.users.update_one(
-        {"_id": user["_id"]},
-        {
-            "$inc": {"free_tokens": cfg["tokens"]},
-            "$set": {
-                "subscribed": True,
-                "plan": plan,
-                "subscription_ends_at": now + timedelta(days=cfg["days"]),
-                "trial_ends_at": now + timedelta(days=cfg["days"]),
-            },
-        },
-    )
-
-    updated = await mongodb.users.find_one({"_id": user["_id"]})
+    updated = await _set_plan(user["id"], {
+        "subscribed": True,
+        "plan": plan,
+        "subscription_ends_at": now + timedelta(days=cfg["days"]),
+        "trial_ends_at": now + timedelta(days=cfg["days"]),
+    }, now, add_tokens=cfg["tokens"])
     tokens_left = int(updated.get("free_tokens", 0))
     sub = compute_subscription(updated)
 
@@ -163,9 +176,7 @@ async def payment_success(payload: PaymentSuccessRequest, user: dict = Depends(g
 async def cancel(user: dict = Depends(get_current_user)):
     """Cancel Pro. Access remains until the current period ends, then the
     user falls back to whatever trial window is still valid."""
-    await mongodb.users.update_one(
-        {"_id": user["_id"]},
-        {"$set": {"subscribed": False, "plan": "free"}},
-    )
-    updated = await mongodb.users.find_one({"_id": user["_id"]})
+    ref = firebase_db.users.document(user["id"])
+    await ref.update({"subscribed": False, "plan": "free"})
+    updated = await firebase_db.get(ref)
     return {**compute_subscription(updated), "message": "Pro cancelled. You keep access until your period ends."}

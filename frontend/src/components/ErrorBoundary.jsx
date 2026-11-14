@@ -45,14 +45,14 @@ export default class ErrorBoundary extends React.Component {
       return (
         <div
           style={{
-            minHeight: '100vh',
+            minHeight: '100dvh',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: '2rem',
-            background: 'radial-gradient(1200px 800px at 50% -10%, rgba(214,88,138,0.18), #0A0A0A 60%)',
-            color: '#fff',
-            fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+            background: 'var(--bg)',
+            color: 'var(--text)',
+            fontFamily: 'var(--font-sans)',
           }}
         >
           <div
@@ -60,11 +60,10 @@ export default class ErrorBoundary extends React.Component {
               maxWidth: '460px',
               width: '100%',
               textAlign: 'center',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '20px',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-card)',
               padding: '2.5rem 2rem',
-              boxShadow: '0 30px 80px -20px rgba(214,88,138,0.35)',
             }}
           >
             <div
@@ -76,7 +75,7 @@ export default class ErrorBoundary extends React.Component {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'rgba(214,88,138,0.15)',
+                background: 'var(--warning-soft)',
                 fontSize: '26px',
               }}
             >
@@ -85,7 +84,7 @@ export default class ErrorBoundary extends React.Component {
             <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.4rem', fontWeight: 700 }}>
               {title || tFallback('errorBoundary.title')}
             </h2>
-            <p style={{ margin: '0 0 1.5rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 1.5rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
               {message || tFallback('errorBoundary.message')}
             </p>
             {showDetail && this.state.error && (
@@ -95,12 +94,12 @@ export default class ErrorBoundary extends React.Component {
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   fontSize: '0.78rem',
-                  background: 'rgba(0,0,0,0.35)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
                   borderRadius: '10px',
                   padding: '0.75rem',
                   margin: '0 0 1.5rem',
-                  color: 'rgba(255,255,255,0.8)',
+                  color: 'var(--text)',
                 }}
               >
                 {String(this.state.error.message || this.state.error)}
@@ -112,13 +111,12 @@ export default class ErrorBoundary extends React.Component {
               style={{
                 cursor: 'pointer',
                 border: '0',
-                borderRadius: '12px',
+                borderRadius: 'var(--radius-control)',
                 padding: '0.8rem 1.6rem',
                 fontSize: '0.95rem',
                 fontWeight: 600,
-                color: '#fff',
-                background: 'linear-gradient(90deg, #D6588A, #7A2B52)',
-                boxShadow: '0 0 22px rgba(214,88,138,0.45)',
+                color: 'var(--on-accent)',
+                background: 'var(--accent)',
               }}
             >
               {reloadLabel || tFallback('errorBoundary.reload')}

@@ -21,10 +21,14 @@ import Terms from './pages/Terms';
 // Code-split the heavier app pages so the public landing loads faster
 // (smaller initial JS bundle -> better LCP / Core Web Vitals).
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Create = lazy(() => import('./pages/Create'));
+const Channels = lazy(() => import('./pages/Channels'));
 const Scheduler = lazy(() => import('./pages/Scheduler'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const History = lazy(() => import('./pages/History'));
 const Admin = lazy(() => import('./pages/Admin'));
+const Profile = lazy(() => import('./pages/Profile'));
+const AIResponder = lazy(() => import('./pages/AIResponder'));
 
 function ProtectedRoute({ children }) {
   // Ironclad: reject missing OR expired tokens. The backend still
@@ -120,15 +124,19 @@ function AppContent() {
     <>
       <Toaster
         position="top-right"
+        containerStyle={{ zIndex: 'var(--z-toast)' }}
         toastOptions={{
           style: {
-            background: '#123346',
-            color: '#eaf5f5',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: '12px',
+            background: 'var(--surface)',
+            color: 'var(--text)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-card)',
+            boxShadow: 'var(--shadow-popover)',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 'var(--fs-body)',
           },
-          success: { iconTheme: { primary: '#D6588A', secondary: '#eaf5f5' } },
-          error: { iconTheme: { primary: '#ff5555', secondary: '#eaf5f5' } },
+          success: { iconTheme: { primary: 'var(--success)', secondary: 'var(--surface)' } },
+          error: { iconTheme: { primary: 'var(--danger)', secondary: 'var(--surface)' } },
         }}
       />
       <div className="app">
@@ -159,6 +167,25 @@ function AppContent() {
             }
           />
           <Route
+            path="/create"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary label="create" reloadTo="/create" showDetail>
+                  <Create user={user} onLogout={handleLogout} />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/studio" element={<Navigate to="/create" replace />} />
+          <Route
+            path="/channels"
+            element={
+              <ProtectedRoute>
+                <Channels user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/scheduler"
             element={
               <ProtectedRoute>
@@ -179,6 +206,24 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <History user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai-responder"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary label="AI responder" reloadTo="/ai-responder" showDetail>
+                  <AIResponder user={user} onLogout={handleLogout} />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />

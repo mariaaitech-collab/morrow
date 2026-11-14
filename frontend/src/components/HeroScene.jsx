@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Float } from '@react-three/drei';
 import { useMotionValueEvent } from 'framer-motion';
+import useTokenColors from '../styles/tokenColors';
 
 function ease(current, target, lambda, delta) {
   return current + (target - current) * (1 - Math.pow(lambda, delta * 60));
@@ -23,8 +24,8 @@ function MouseTracker({ mouseRef }) {
   return null;
 }
 
-/* ─── Glowing central sun / BrandAura core ─── */
-function Core({ progressRef }) {
+/* ─── Glowing central sun / Morrow core ─── */
+function Core({ progressRef, colors }) {
   const ref = useRef();
   const halo = useRef();
 
@@ -48,8 +49,8 @@ function Core({ progressRef }) {
       <mesh ref={ref}>
         <icosahedronGeometry args={[1.15, 8]} />
         <meshStandardMaterial
-          color="#D6588A"
-          emissive="#7A2B52"
+          color={colors.accent}
+          emissive={colors.accentHover}
           emissiveIntensity={0.55}
           metalness={0.45}
           roughness={0.22}
@@ -59,7 +60,7 @@ function Core({ progressRef }) {
       </mesh>
       <mesh ref={halo} rotation={[Math.PI / 2.1, 0.2, 0]}>
         <torusGeometry args={[1.9, 0.012, 12, 160]} />
-        <meshStandardMaterial color="#E8558C" emissive="#7A2B52" emissiveIntensity={0.6} transparent opacity={0.4} />
+        <meshStandardMaterial color={colors.accent} emissive={colors.accentHover} emissiveIntensity={0.6} transparent opacity={0.4} />
       </mesh>
     </group>
   );
@@ -124,15 +125,16 @@ function OrbitRing({ radius, color }) {
 }
 
 /* ─── The solar system ─── */
+// 	one names a colour token (see styles/tokenColors.js), so planets follow the palette.
 const PLANETS = [
-  { radius: 2.6, size: 0.30, speed: 0.26, color: '#D6588A', ring: false, tilt: [0.28, 0, 0.18] },
-  { radius: 3.7, size: 0.50, speed: 0.18, color: '#7A2B52', ring: true,  tilt: [-0.22, 0.1, -0.15] },
-  { radius: 4.8, size: 0.24, speed: 0.34, color: '#E8558C', ring: false, tilt: [0.15, 0, 0.3] },
-  { radius: 5.9, size: 0.44, speed: 0.13, color: '#6c5ce7', ring: true,  tilt: [-0.3, -0.12, 0.2] },
-  { radius: 6.9, size: 0.20, speed: 0.42, color: '#00d9a8', ring: false, tilt: [0.2, 0, -0.25] },
+  { radius: 2.6, size: 0.30, speed: 0.26, tone: 'accent', ring: false, tilt: [0.28, 0, 0.18] },
+  { radius: 3.7, size: 0.50, speed: 0.18, tone: 'accentHover', ring: true,  tilt: [-0.22, 0.1, -0.15] },
+  { radius: 4.8, size: 0.24, speed: 0.34, tone: 'textMuted', ring: false, tilt: [0.15, 0, 0.3] },
+  { radius: 5.9, size: 0.44, speed: 0.13, tone: 'accent', ring: true,  tilt: [-0.3, -0.12, 0.2] },
+  { radius: 6.9, size: 0.20, speed: 0.42, tone: 'accentHover', ring: false, tilt: [0.2, 0, -0.25] },
 ];
 
-function SolarSystem({ progressRef, mouseRef }) {
+function SolarSystem({ progressRef, mouseRef, colors }) {
   const group = useRef();
 
   useFrame((_, delta) => {
@@ -149,19 +151,19 @@ function SolarSystem({ progressRef, mouseRef }) {
 
   return (
     <group ref={group}>
-      <Core progressRef={progressRef} />
-      {PLANETS.map((pl, i) => (
-        <Planet key={i} {...pl} progressRef={progressRef} />
+      <Core progressRef={progressRef} colors={colors} />
+      {PLANETS.map(({ tone, ...pl }, i) => (
+        <Planet key={i} {...pl} color={colors[tone]} progressRef={progressRef} />
       ))}
       {PLANETS.map((pl, i) => (
-        <OrbitRing key={'r' + i} radius={pl.radius} color={pl.color} />
+        <OrbitRing key={'r' + i} radius={pl.radius} color={colors[pl.tone]} />
       ))}
     </group>
   );
 }
 
 /* ─── Subtle dust particles ─── */
-function Dust({ count = 160, progressRef }) {
+function Dust({ count = 160, progressRef, color }) {
   const points = useRef();
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
@@ -185,13 +187,13 @@ function Dust({ count = 160, progressRef }) {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" count={count} array={positions} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial size={0.022} color="#9be8d8" transparent opacity={0.32} sizeAttenuation depthWrite={false} />
+      <pointsMaterial size={0.022} color={color} transparent opacity={0.32} sizeAttenuation depthWrite={false} />
     </points>
   );
 }
 
 /* ─── Glass panels drifting in background ─── */
-function GlassPanel({ position, rotation, size = [1.7, 1.05], progressRef, depth = 0.35 }) {
+function GlassPanel({ position, rotation, size = [1.7, 1.05], progressRef, depth = 0.35, color }) {
   const mesh = useRef();
   const baseRotation = useMemo(() => rotation, [rotation]);
 
@@ -206,7 +208,7 @@ function GlassPanel({ position, rotation, size = [1.7, 1.05], progressRef, depth
   return (
     <mesh ref={mesh} position={position} rotation={baseRotation}>
       <planeGeometry args={[size[0], size[1]]} />
-      <meshBasicMaterial color="#bfe9e0" transparent opacity={0.05} side={2} depthWrite={false} />
+      <meshBasicMaterial color={color} transparent opacity={0.05} side={2} depthWrite={false} />
     </mesh>
   );
 }
@@ -232,6 +234,7 @@ function CameraRig({ progressRef }) {
 export default function HeroScene({ scrollProgress }) {
   const progressRef = useRef(0);
   const mouseRef = useRef({ x: 0, y: 0 });
+  const colors = useTokenColors();
 
   useMotionValueEvent(scrollProgress, 'change', (v) => {
     progressRef.current = v;
@@ -247,16 +250,16 @@ export default function HeroScene({ scrollProgress }) {
       >
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 6, 5]} intensity={0.9} />
-        <pointLight position={[-6, -2, 3]} intensity={32} distance={22} decay={2} color="#D6588A" />
-        <pointLight position={[7, 3, -4]} intensity={46} distance={26} decay={2} color="#7A2B52" />
+        <pointLight position={[-6, -2, 3]} intensity={32} distance={22} decay={2} color={colors.accent} />
+        <pointLight position={[7, 3, -4]} intensity={46} distance={26} decay={2} color={colors.accentHover} />
 
         <MouseTracker mouseRef={mouseRef} />
         <CameraRig progressRef={progressRef} />
-        <SolarSystem progressRef={progressRef} mouseRef={mouseRef} />
-        <Dust progressRef={progressRef} />
+        <SolarSystem progressRef={progressRef} mouseRef={mouseRef} colors={colors} />
+        <Dust progressRef={progressRef} color={colors.textMuted} />
 
-        <GlassPanel position={[-4.6, -0.6, -2]} rotation={[0.15, 0.5, 0.03]} size={[1.9, 1.15]} progressRef={progressRef} depth={0.3} />
-        <GlassPanel position={[4.9, -1.4, -3]} rotation={[-0.1, -0.45, -0.02]} size={[1.5, 0.95]} progressRef={progressRef} depth={0.42} />
+        <GlassPanel position={[-4.6, -0.6, -2]} rotation={[0.15, 0.5, 0.03]} size={[1.9, 1.15]} progressRef={progressRef} depth={0.3} color={colors.border} />
+        <GlassPanel position={[4.9, -1.4, -3]} rotation={[-0.1, -0.45, -0.02]} size={[1.5, 0.95]} progressRef={progressRef} depth={0.42} color={colors.border} />
       </Canvas>
     </div>
   );

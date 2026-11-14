@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
 import { isAuthenticated } from '../auth';
 import { useLanguage } from '../i18n/LanguageContext';
 import LanguageSelector from './LanguageSelector';
+import { Logo } from './ui';
 
 function Navbar({ user, onLogout, active }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const authed = isAuthenticated();
   const { t } = useLanguage();
   const unlimited = !!user?.is_unlimited;
@@ -18,11 +22,15 @@ function Navbar({ user, onLogout, active }) {
   const openPricing = () => window.dispatchEvent(new CustomEvent('brandora:upgrade-required'));
   return (
     <nav className="navbar">
-      <Link to={authed ? '/dashboard' : '/'} className="navbar-brand">
-        <span className="brand-mark">B</span>
-        Brand<span style={{ color: 'var(--primary)' }}>Aura</span>
+      <Link to={authed ? '/dashboard' : '/'} className="navbar-brand" aria-label="Morrow">
+        <Logo size={32} />
       </Link>
-      <div className="nav-links">
+      {authed && (
+        <button className="nav-menu-toggle" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen}>
+          {menuOpen ? <X size={19} /> : <Menu size={19} />}
+        </button>
+      )}
+      <div className={`nav-links ${menuOpen ? 'nav-links-open' : ''}`}>
         {authed ? (
           <>
             <Link to="/dashboard" className={`nav-link ${active === 'dashboard' ? 'active' : ''}`}>
@@ -51,7 +59,7 @@ function Navbar({ user, onLogout, active }) {
               title={unlimited ? 'Unlimited tokens' : 'Tokens left'}
               onClick={tokens === 0 ? openPricing : undefined}
             >
-              ⚡ {unlimited ? '∞' : tokens}
+              {unlimited ? '∞ credits' : `${tokens} credits`}
             </span>
             <button className="btn btn-glass btn-sm" onClick={onLogout}>
               {t('nav.logout')}

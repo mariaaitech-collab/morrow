@@ -15,7 +15,7 @@ from datetime import timedelta, datetime
 from fastapi import Depends, HTTPException, Request
 from jose import jwt, JWTError
 
-import mongodb
+import firebase_db
 from config import SECRET_KEY, ALGORITHM, utc_now, ADMIN_EMAIL
 
 TRIAL_DAYS = 30
@@ -53,10 +53,7 @@ async def _ensure_trial(user: dict) -> dict:
     te = user.get("trial_ends_at")
     if te is None and not user.get("subscribed"):
         fresh = now + timedelta(days=30)
-        await mongodb.users.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"trial_ends_at": fresh, "plan": "trial"}},
-        )
+        await firebase_db.users.document(user["id"]).update({"trial_ends_at": fresh, "plan": "trial"})
         user["trial_ends_at"] = fresh
         user["plan"] = "trial"
     return user
@@ -93,9 +90,8 @@ async def maybe_refresh_free_tokens(user: dict) -> dict:
     reset_at = _coerce_dt(user.get("free_token_reset_at"))
     if reset_at is None or now >= reset_at:
         try:
-            await mongodb.users.update_one(
-                {"_id": user["_id"]},
-                {"$set": {"free_tokens": FREE_TOKENS_BASE, "free_token_reset_at": now + timedelta(hours=FREE_TOKENS_RESET_HOURS)}},
+            await firebase_db.users.document(user["id"]).update(
+                {"free_tokens": FREE_TOKENS_BASE, "free_token_reset_at": now + timedelta(hours=FREE_TOKENS_RESET_HOURS)}
             )
             user["free_tokens"] = FREE_TOKENS_BASE
             user["free_token_reset_at"] = now + timedelta(hours=FREE_TOKENS_RESET_HOURS)
@@ -115,7 +111,7 @@ async def get_current_user(request: Request) -> dict:
     email = payload.get("sub")
     if not email:
         raise HTTPException(status_code=401, detail="Invalid token payload.")
-    user = await mongodb.users.find_one({"email": email})
+    user = await firebase_db.user_by_email(email)
     if not user:
         raise HTTPException(status_code=401, detail="Account no longer exists.")
     user = await _ensure_trial(user)
@@ -153,11 +149,10 @@ async def apply_dev_override(user: dict) -> dict:
                 pass
 
     # Persist a real 1000-token top-up so the balance is visible and survives.
+    # Skipped when nothing would change, so a request does not cost a write.
     try:
-        await mongodb.users.update_one(
-            {"_id": user["_id"]},
-            {"$set": locks},
-        )
+        if user.get("free_tokens") != DEV_OVERRIDE_TOKENS or len(locks) > 1:
+            await firebase_db.users.document(user["id"]).update(locks)
         user["free_tokens"] = DEV_OVERRIDE_TOKENS
     except Exception as e:
         print(f"[DEV] Override top-up failed: {e}")
@@ -199,7 +194,7 @@ def compute_subscription(user: dict) -> dict:
     # unlimited (its holder never burns a token). Standard & Premium hold a
     # finite token allotment that is consumed per core action.
     is_paid = subscribed and (sub_ends is None or sub_ends > now)
-    known_plans = ("standard", "premium", "pro")
+    known_plans = ("standard", "premium", "pro", "starter", "plus", "enterprise")
     active_plan = plan if (plan in known_plans and is_paid) else None
 
     trial_active = trial_ends is not None and trial_ends > now
@@ -208,8 +203,8 @@ def compute_subscription(user: dict) -> dict:
 
     access_active = is_paid or trial_active
     # Explicit session override (dev override) short-circuits every paywall;
-    # otherwise only the "pro" plan is truly unlimited.
-    is_unlimited = bool(user.get("is_unlimited")) or active_plan == "pro"
+    # otherwise only the "pro" or "enterprise" plan is truly unlimited.
+    is_unlimited = bool(user.get("is_unlimited")) or active_plan in ("pro", "enterprise")
     resolved_plan = active_plan or ("trial" if is_trialing else "free")
 
     return {
@@ -239,7 +234,7 @@ async def require_subscription(user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(
             status_code=402,
             detail=(
-                "Your free trial has ended. To upgrade to BrandAura Pro ($29/mo), "
+                "Your free trial has ended. To upgrade to Morrow Pro ($29/mo), "
                 "please contact our administration at meveryx@gmail.com with your "
                 "registered email for manual activation and payment instructions."
             ),
@@ -283,15 +278,22 @@ async def deduct_token(user: dict) -> int:
     if status.get("is_unlimited"):
         return remaining_tokens(user, status)
 
-    updated = await mongodb.users.find_one_and_update(
-        {"_id": user["_id"], "free_tokens": {"$gt": 0}},
-        {"$inc": {"free_tokens": -1}},
-        return_document=True,
-    )
-    if updated is None:
+    left = await _spend_token(firebase_db.db.transaction(), firebase_db.users.document(user["id"]))
+    if left is None:
         raise HTTPException(status_code=402, detail=TOKEN_NOT_AVAILABLE_MSG)
-    user["free_tokens"] = updated.get("free_tokens", 0)
-    return int(user["free_tokens"])
+    user["free_tokens"] = left
+    return left
+
+
+@firebase_db.async_transactional
+async def _spend_token(transaction, ref) -> int | None:
+    """Take one token if the stored balance is above zero; returns what is left."""
+    snap = await ref.get(transaction=transaction)
+    balance = int((snap.to_dict() or {}).get("free_tokens", 0) or 0) if snap.exists else 0
+    if balance <= 0:
+        return None
+    transaction.update(ref, {"free_tokens": balance - 1})
+    return balance - 1
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:

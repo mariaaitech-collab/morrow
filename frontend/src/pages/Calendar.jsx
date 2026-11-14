@@ -3,12 +3,13 @@ import toast from 'react-hot-toast';
 import api from '../api/axios';
 import { ensureToken } from '../api/tokens';
 import { useLanguage } from '../i18n/LanguageContext';
-import Navbar from '../components/Navbar';
+import WorkspaceShell from '../components/WorkspaceShell';
+import { useDialog } from '../components/ui';
 
 const PLATFORMS = [
-  { value: 'facebook', label: 'Facebook', color: '#1877f2' },
-  { value: 'linkedin', label: 'LinkedIn', color: '#0a66c2' },
-  { value: 'instagram', label: 'Instagram', color: '#dc2743' },
+  { value: 'facebook', label: 'Facebook', color: 'var(--platform-facebook)' },
+  { value: 'linkedin', label: 'LinkedIn', color: 'var(--platform-linkedin)' },
+  { value: 'instagram', label: 'Instagram', color: 'var(--platform-instagram)' },
 ];
 
 const WEEKDAYS = ['weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat', 'weekdaySun'];
@@ -34,6 +35,7 @@ function Calendar({ user, onLogout }) {
   const [view, setView] = useState('month');
   const [refDate, setRefDate] = useState(new Date());
   const [modal, setModal] = useState(false);
+  const qmRef = useDialog(modal, () => setModal(false));
   const [modalTab, setModalTab] = useState('note');
   const [selDate, setSelDate] = useState(new Date());
   const [pageTab, setPageTab] = useState('calendar'); // calendar | notes
@@ -276,40 +278,40 @@ function Calendar({ user, onLogout }) {
 
   return (
     <>
-      <Navbar user={user} onLogout={onLogout} active="calendar" />
-      <div className="calendar-page">
+      <WorkspaceShell user={user} onLogout={onLogout} active="calendar">
+      <div className="m-page calendar-page">
         <div className="cal-header">
           <div className="cal-title">
-            {t('calendar.title')}
-            <small>{t('calendar.subtitle')}</small>
+            <h1>{t('calendar.title')}</h1>
+            <p>{t('calendar.subtitle')}</p>
           </div>
           {pageTab === 'calendar' && (
             <div className="cal-controls">
-              <div className="cal-toggle">
-                <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>{t('calendar.month')}</button>
-                <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>{t('calendar.week')}</button>
+              <div className="cal-toggle" role="group" aria-label={`${t('calendar.month')} / ${t('calendar.week')}`}>
+                <button type="button" className={view === 'month' ? 'active' : ''} aria-pressed={view === 'month'} onClick={() => setView('month')}>{t('calendar.month')}</button>
+                <button type="button" className={view === 'week' ? 'active' : ''} aria-pressed={view === 'week'} onClick={() => setView('week')}>{t('calendar.week')}</button>
               </div>
               <div className="cal-nav">
-                <button className="cal-btn" onClick={() => shift(-1)}>←</button>
+                <button type="button" className="cal-btn" aria-label="Previous" onClick={() => shift(-1)}>←</button>
                 <span className="month-label">{view === 'month' ? monthLabel : `${weekCells[0].toLocaleDateString(language, { month: 'short', day: 'numeric' })} – ${weekCells[6].toLocaleDateString(language, { month: 'short', day: 'numeric' })}`}</span>
-                <button className="cal-btn" onClick={() => shift(1)}>→</button>
-                <button className="cal-btn" onClick={() => setRefDate(new Date())}>{t('calendar.today')}</button>
+                <button type="button" className="cal-btn" aria-label="Next" onClick={() => shift(1)}>→</button>
+                <button type="button" className="cal-btn cal-btn--today" onClick={() => setRefDate(new Date())}>{t('calendar.today')}</button>
               </div>
             </div>
           )}
         </div>
 
         <div className="cal-subtabs">
-          <button className={`cal-subtab ${pageTab === 'calendar' ? 'active' : ''}`} onClick={() => setPageTab('calendar')}>{t('calendar.tabCalendar')}</button>
-          <button className={`cal-subtab ${pageTab === 'notes' ? 'active' : ''}`} onClick={() => setPageTab('notes')}>{t('calendar.tabNotes')}</button>
+          <button type="button" className={`cal-subtab ${pageTab === 'calendar' ? 'active' : ''}`} aria-pressed={pageTab === 'calendar'} onClick={() => setPageTab('calendar')}>{t('calendar.tabCalendar')}</button>
+          <button type="button" className={`cal-subtab ${pageTab === 'notes' ? 'active' : ''}`} aria-pressed={pageTab === 'notes'} onClick={() => setPageTab('notes')}>{t('calendar.tabNotes')}</button>
         </div>
 
         {pageTab === 'calendar' ? (
           <>
-            <div className="legend" style={{ display: 'flex', gap: '1.2rem', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-              <span><span style={{ color: 'var(--color-primary)' }}>●</span> {t('calendar.legendScheduled')}</span>
-              <span><span style={{ color: 'var(--color-success)' }}>●</span> {t('calendar.legendPublished')}</span>
-              <span><span style={{ color: 'var(--color-dusty)' }}>●</span> {t('calendar.legendNote')}</span>
+            <div className="legend" style={{ display: 'flex', gap: '1.2rem', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <span><span style={{ color: 'var(--accent)' }}>●</span> {t('calendar.legendScheduled')}</span>
+              <span><span style={{ color: 'var(--success)' }}>●</span> {t('calendar.legendPublished')}</span>
+              <span><span style={{ color: 'var(--accent-2)' }}>●</span> {t('calendar.legendNote')}</span>
             </div>
 
             {loading ? (
@@ -317,7 +319,8 @@ function Calendar({ user, onLogout }) {
             ) : (
               <>
             {view === 'month' ? (
-              <>
+              <div className="month-scroll">
+                <div className="month-board">
                 <div className="month-weekdays">
                   {WEEKDAYS.map((w) => <span key={w}>{t('calendar.' + w)}</span>)}
                 </div>
@@ -346,7 +349,8 @@ function Calendar({ user, onLogout }) {
                     );
                   })}
                 </div>
-              </>
+                </div>
+              </div>
             ) : (
               <div className="week-cal">
                 {weekCells.map((d) => {
@@ -382,13 +386,14 @@ function Calendar({ user, onLogout }) {
           <NotesView notes={notes} onDelete={deleteNote} onToggle={toggleNoteComplete} onAdd={() => openDay(new Date())} />
         )}
       </div>
+      </WorkspaceShell>
 
       {modal && (
         <div className="qm-overlay" onClick={() => setModal(false)}>
-          <div className="qm" onClick={(e) => e.stopPropagation()}>
+          <div className="qm" ref={qmRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="qm-title" onClick={(e) => e.stopPropagation()}>
             <div className="qm-head">
-              <h3>{selDate.toLocaleDateString(language, { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
-              <button className="qm-close" onClick={() => setModal(false)}>✕</button>
+              <h3 id="qm-title">{selDate.toLocaleDateString(language, { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
+              <button type="button" className="qm-close" aria-label={t('common.close')} onClick={() => setModal(false)}>✕</button>
             </div>
 
             <div className="qm-tabs">
@@ -400,7 +405,7 @@ function Calendar({ user, onLogout }) {
               <div className="qm-body">
                 <div style={{ gridColumn: '1 / -1' }}>
                   <div className="note-field">
-                    <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('calendar.modalPersonalNote')} / Reminder</label>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('calendar.modalPersonalNote')} / Reminder</label>
                     <textarea placeholder={t('calendar.notePlaceholder')} value={noteText} onChange={(e) => setNoteText(e.target.value)} />
                   </div>
                   <div className="notify-row">
@@ -419,7 +424,7 @@ function Calendar({ user, onLogout }) {
                       <input type="datetime-local" value={notifyAt} onChange={(e) => setNotifyAt(e.target.value)} />
                     </div>
                   )}
-                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginTop: '1rem' }}>{t('calendar.bestTimeToPost')}</label>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginTop: '1rem' }}>{t('calendar.bestTimeToPost')}</label>
                   <BestTimes />
                   <div className="qm-actions">
                     <button className="btn btn-outline btn-lg" onClick={() => setModal(false)}>{t('calendar.cancel')}</button>
@@ -503,7 +508,7 @@ function NotesView({ notes, onDelete, onToggle, onAdd }) {
         <div>
           <h2>{t('calendar.notesTitle')}</h2>
           <p className="notes-sub">
-            {t('calendar.totalNotes', { count: sorted.length })} · <b style={{ color: 'var(--color-primary)' }}>{t('calendar.pendingNotes', { count: pending })}</b>
+            {t('calendar.totalNotes', { count: sorted.length })} · <b style={{ color: 'var(--accent-text)' }}>{t('calendar.pendingNotes', { count: pending })}</b>
             {pending !== sorted.length && ` · ${t('calendar.completedNotes', { count: sorted.length - pending })}`}
           </p>
         </div>

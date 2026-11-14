@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SUPPORTED_LANGUAGES } from '../i18n/translations';
+import './LanguageSelector.css';
 
 export default function LanguageSelector() {
-  const { language, setLanguage, dir } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -25,12 +27,11 @@ export default function LanguageSelector() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={`Language: ${current.label}`}
       >
-        <span className="lang-flag">{current.flag}</span>
+        <span className="lang-flag" aria-hidden="true">{current.flag}</span>
         <span className="lang-label">{current.label}</span>
-        <svg className="lang-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <ChevronDown className="lang-caret" size={14} strokeWidth={1.5} aria-hidden="true" />
       </button>
 
       {open && (
@@ -47,13 +48,9 @@ export default function LanguageSelector() {
                   setOpen(false);
                 }}
               >
-                <span className="lang-flag">{l.flag}</span>
+                <span className="lang-flag" aria-hidden="true">{l.flag}</span>
                 <span className="lang-label">{l.label}</span>
-                {l.code === language && (
-                  <svg className="lang-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                )}
+                {l.code === language && <Check className="lang-check" size={14} strokeWidth={1.5} aria-hidden="true" />}
               </button>
             </li>
           ))}

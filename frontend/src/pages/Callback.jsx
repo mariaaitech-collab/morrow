@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../i18n/LanguageContext';
+import { Logo } from '../components/ui';
 
 function Callback() {
   const { platform } = useParams();
@@ -55,7 +56,7 @@ function Callback() {
   return (
     <>
       <nav className="navbar">
-        <div className="navbar-brand">Brandora<span>Social</span></div>
+        <div className="navbar-brand"><Logo size={32} /></div>
       </nav>
       <div className="auth-container">
         <div className="auth-card" style={{ textAlign: 'center' }}>

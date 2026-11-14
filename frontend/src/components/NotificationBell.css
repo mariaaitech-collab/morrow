@@ -1,0 +1,68 @@
+/* Notification bell + alerts panel (topbar). Tokens only. */
+.m-bell { position: relative; display: inline-flex; }
+.m-bell__dot {
+  position: absolute;
+  top: 7px;
+  inset-inline-end: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--bg);
+  pointer-events: none;
+}
+.m-bell__panel { width: 360px; }
+/* Phones: pin the panel under the topbar, full width minus the page gutter. */
+@media (max-width: 560px) {
+  .m-bell__panel { position: fixed; top: calc(var(--topbar-height) + var(--space-2)); inset-inline: var(--space-4); width: auto; max-width: none; }
+}
+.m-bell__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.m-bell__title { margin: 0; font-size: var(--fs-body); font-weight: var(--fw-strong); }
+.m-bell__empty { margin: 0; padding: var(--space-6) var(--space-4); color: var(--text-muted); font-size: var(--fs-meta); text-align: center; }
+.m-bell__list { max-height: 360px; margin: 0; padding: var(--space-1); overflow-y: auto; list-style: none; }
+.m-bell__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.m-bell__item:hover { background: var(--surface-2); }
+.m-bell__item:focus-visible { outline: none; box-shadow: var(--ring); }
+.m-bell__icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 50%; }
+.m-bell__icon--warning { background: var(--warning-soft); color: var(--warning-text); }
+.m-bell__icon--danger { background: var(--danger-soft); color: var(--danger-text); }
+.m-bell__copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; font-size: var(--fs-meta); }
+.m-bell__copy strong { color: var(--text); font-weight: var(--fw-strong); }
+.m-bell__copy span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.m-bell__copy time { color: var(--text-muted); }
+.m-bell__unread { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: var(--accent); }
+.m-bell__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+}

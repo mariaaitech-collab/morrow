@@ -31,8 +31,8 @@ export default function ForgotPassword() {
   return (
     <>
     <SEO
-      title="Reset Password | BrandAura — AI Social Media Manager"
-      description="Forgot your password? Reset it to get back into BrandAura, your AI social media manager and content scheduling platform."
+      title="Reset Password | Morrow — AI Social Media Manager"
+      description="Forgot your password? Reset it to get back into Morrow, your AI social media manager and content scheduling platform."
       path="/forgot-password"
     />
     <AuthShell

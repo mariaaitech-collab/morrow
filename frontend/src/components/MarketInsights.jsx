@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { BarChart3, ExternalLink, Globe2, Lightbulb, Rocket, Search, Target, Trophy } from 'lucide-react';
 import api from '../api/axios';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useDraft } from '../draft/DraftContext';
 
-const PREMIUM_BTN =
-  'bg-gradient-to-r from-fuchsia-400/10 to-fuchsia-400/10 text-fuchsia-100 border border-fuchsia-500/30 transition-all duration-200 ease-out hover:from-fuchsia-400/20 hover:to-fuchsia-400/20 hover:border-fuchsia-400/50 hover:shadow-[0_0_22px_rgba(45,212,191,0.25)] active:scale-95';
+const PREMIUM_BTN = 'tech-action-btn transition-all duration-200 ease-out';
 
 const PLATFORM_META = {
   linkedin: { badge: 'badge-linkedin', label: 'LinkedIn' },
@@ -57,122 +57,95 @@ function MarketInsights() {
     }
   };
 
+  const selectedPlatforms = draft.selectedPlatforms || ['facebook', 'linkedin', 'instagram'];
   const leaders = Array.isArray(draft.marketData?.market_leaders) ? draft.marketData.market_leaders : [];
   const positioning = Array.isArray(draft.marketData?.positioning_advice) ? draft.marketData.positioning_advice : [];
   const tactics = draft.marketData?.platform_tactics || {};
   const quickWins = Array.isArray(draft.marketData?.quick_wins) ? draft.marketData.quick_wins : [];
 
   return (
-    <div className="market-panel">
+    <section className="market-panel">
       <div className="market-head">
-        <div className="market-head-icon">📊</div>
-        <div>
-          <h4>{t('market.title')}</h4>
-          <p>{t('market.subtitle')}</p>
+        <div className="market-head-title">
+          <span className="market-head-icon"><BarChart3 size={22} /></span>
+          <div>
+            <h4>{t('market.title')}</h4>
+            <p>{t('market.subtitle')}</p>
+          </div>
         </div>
+        <span className="market-head-chip"><Globe2 size={14} /> Live market</span>
       </div>
 
       <div className="market-form">
         <div className="market-grid">
-          <div className="form-group">
+          <div className="form-group market-field market-field-wide">
             <label>{t('market.niche')}</label>
-            <input
-              value={profile.niche || ''}
-              onChange={setProfile('niche')}
-              placeholder="e.g. Organic skincare for sensitive skin"
-            />
+            <input value={profile.niche || ''} onChange={setProfile('niche')} placeholder="e.g. Organic skincare for sensitive skin" />
           </div>
-          <div className="form-group">
+          <div className="form-group market-field">
             <label>{t('market.audience')}</label>
-            <input
-              value={profile.audience || ''}
-              onChange={setProfile('audience')}
-              placeholder="e.g. Women 25-40, eczema-prone, clean beauty buyers"
-            />
+            <input value={profile.audience || ''} onChange={setProfile('audience')} placeholder="e.g. Women 25-40, clean beauty buyers" />
           </div>
-          <div className="form-group">
+          <div className="form-group market-field">
             <label>{t('market.businessType')}</label>
-            <input
-              value={profile.businessType || ''}
-              onChange={setProfile('businessType')}
-              placeholder="e.g. DTC e-commerce brand"
-            />
+            <input value={profile.businessType || ''} onChange={setProfile('businessType')} placeholder="e.g. DTC e-commerce brand" />
           </div>
-          <div className="form-group">
+          <div className="form-group market-field">
             <label>{t('market.offerings')}</label>
-            <input
-              value={profile.offerings || ''}
-              onChange={setProfile('offerings')}
-              placeholder="e.g. Serums, moisturizers, 900+ 5-star reviews"
-            />
+            <input value={profile.offerings || ''} onChange={setProfile('offerings')} placeholder="e.g. Serums, moisturizers, 900+ reviews" />
           </div>
-          <div className="form-group">
+          <div className="form-group market-field">
             <label>{t('market.location')}</label>
-            <input
-              value={profile.location || ''}
-              onChange={setProfile('location')}
-              placeholder={t('market.locationPlaceholder')}
-            />
+            <input value={profile.location || ''} onChange={setProfile('location')} placeholder={t('market.locationPlaceholder')} />
           </div>
-          <div className="form-group">
+          <div className="form-group market-field market-field-wide">
             <label>{t('market.topicOptional')}</label>
-            <input
-              value={draft.marketQuery || ''}
-              onChange={(e) => setDraft({ marketQuery: e.target.value })}
-              placeholder={t('market.topicPlaceholder')}
-            />
+            <input value={draft.marketQuery || ''} onChange={(e) => setDraft({ marketQuery: e.target.value })} placeholder={t('market.topicPlaceholder')} />
           </div>
         </div>
 
-        <div className="form-group">
-          <label>{t('market.platformsLabel')}</label>
-          <div className="platform-selector">
-            {['facebook', 'linkedin', 'instagram'].map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={`platform-btn ${(draft.selectedPlatforms || []).includes(p) ? 'active' : ''}`}
-                onClick={() => togglePlatform(p)}
-              >
-                <span className="platform-btn-icon">{p.charAt(0).toUpperCase()}</span>
-                <span>{PLATFORM_META[p].label}</span>
-              </button>
-            ))}
+        <div className="market-controls">
+          <div className="market-platform-block">
+            <label>{t('market.platformsLabel')}</label>
+            <div className="market-platform-row">
+              {['facebook', 'linkedin', 'instagram'].map((p) => (
+                <button key={p} type="button" className={`market-platform-pill ${selectedPlatforms.includes(p) ? 'active' : ''}`} onClick={() => togglePlatform(p)}>
+                  <span className={`market-platform-dot ${p}`} />
+                  <span>{PLATFORM_META[p].label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="market-actions">
-          <button className={"btn " + PREMIUM_BTN} onClick={runScan} disabled={draft.marketLoading}>
-            {draft.marketLoading ? (
-              <><span className="spinner-sm" /> {t('market.scanning')}</>
-            ) : (
-              t('market.scanBtn')
-            )}
+          <button className={`btn ${PREMIUM_BTN}`} onClick={runScan} disabled={draft.marketLoading}>
+            {draft.marketLoading ? <><span className="spinner-sm" /> {t('market.scanning')}</> : <><Search size={16} /> {t('market.scanBtn')}</>}
           </button>
         </div>
       </div>
 
-      {draft.marketError && <div className="competitor-error">{draft.marketError}</div>}
+      {draft.marketError && <div className="competitor-error market-error">{draft.marketError}</div>}
 
       {draft.marketData && (
         <div className="strategy-results market-results">
-          <div className="strategy-providers">
+          <div className="strategy-providers market-scan-meta">
             <span className="live-chip">{t('market.liveChip')}</span>
-            {t('market.scannedFor', {
+            <span>{t('market.scannedFor', {
               search: draft.marketData.providers?.search || 'Tavily',
               model: draft.marketData.providers?.analysis?.model || 'Gemini',
               count: draft.marketData.search_meta?.total_raw_results || 0,
-            })}
+            })}</span>
           </div>
 
           {draft.marketData.market_overview && (
-            <p className="market-overview">{draft.marketData.market_overview}</p>
+            <div className="market-overview">
+              <strong>{t('market.marketOverview')}</strong>
+              <p>{draft.marketData.market_overview}</p>
+            </div>
           )}
 
           {leaders.length > 0 && (
-            <section className="strategy-section">
+            <section className="strategy-section market-result-section">
               <div className="strategy-section-head">
-                <span className="strategy-section-icon">🏆</span>
+                <span className="strategy-section-icon"><Trophy size={18} /></span>
                 <div>
                   <h5>{t('market.leaders')}</h5>
                   <p>{t('market.leadersSub')}</p>
@@ -188,11 +161,11 @@ function MarketInsights() {
                       </span>
                     </div>
                     {c.positioning && <p className="market-leader-row"><b>{t('market.positioning')}:</b> {c.positioning}</p>}
-                    {c.winning_move && <p className="market-leader-row good"><b>✓ {t('market.winning')}:</b> {c.winning_move}</p>}
-                    {c.gap && <p className="market-leader-row warn"><b>✗ {t('market.gap')}:</b> {c.gap}</p>}
+                    {c.winning_move && <p className="market-leader-row good"><b>{t('market.winning')}:</b> {c.winning_move}</p>}
+                    {c.gap && <p className="market-leader-row warn"><b>{t('market.gap')}:</b> {c.gap}</p>}
                     {c.link && (
                       <a href={c.link} target="_blank" rel="noreferrer" className="market-leader-link">
-                        {t('market.openSource')} →
+                        {t('market.openSource')} <ExternalLink size={13} />
                       </a>
                     )}
                   </div>
@@ -202,61 +175,56 @@ function MarketInsights() {
           )}
 
           {positioning.length > 0 && (
-            <section className="strategy-section">
+            <section className="strategy-section market-result-section">
               <div className="strategy-section-head">
-                <span className="strategy-section-icon">🧭</span>
+                <span className="strategy-section-icon"><Target size={18} /></span>
                 <div>
                   <h5>{t('market.positioningTitle')}</h5>
                   <p>{t('market.positioningSub')}</p>
                 </div>
               </div>
-              <ul className="analysis-list">
+              <ul className="analysis-list market-text-list">
                 {positioning.map((s, i) => <li key={i}>{s}</li>)}
               </ul>
             </section>
           )}
 
-          <section className="strategy-section">
+          <section className="strategy-section market-result-section">
             <div className="strategy-section-head">
-              <span className="strategy-section-icon">🚀</span>
+              <span className="strategy-section-icon"><Rocket size={18} /></span>
               <div>
                 <h5>{t('market.tactics')}</h5>
                 <p>{t('market.tacticsSub')}</p>
               </div>
             </div>
-            <div className="tactics-tabs">
+            <div className="tactics-tabs market-tabs">
               {['facebook', 'instagram', 'linkedin'].map((p) => (
-                <button
-                  key={p}
-                  className={`tactics-tab ${activePlatform === p ? 'active' : ''}`}
-                  onClick={() => setActivePlatform(p)}
-                >
+                <button key={p} className={`tactics-tab ${activePlatform === p ? 'active' : ''}`} onClick={() => setActivePlatform(p)}>
                   {PLATFORM_META[p].label}
                 </button>
               ))}
             </div>
-            <ul className="analysis-list">
-              {(tactics[activePlatform] || []).length === 0 ? (
-                <li className="analysis-empty">{t('market.noTactics')}</li>
-              ) : (
-                (tactics[activePlatform] || []).map((s, i) => <li key={i}>{s}</li>)
-              )}
+            <ul className="analysis-list market-text-list">
+              {(tactics[activePlatform] || []).length === 0
+                ? <li className="analysis-empty">{t('market.noTactics')}</li>
+                : (tactics[activePlatform] || []).map((s, i) => <li key={i}>{s}</li>)}
             </ul>
           </section>
 
           {quickWins.length > 0 && (
-            <section className="strategy-section">
+            <section className="strategy-section market-result-section">
               <div className="strategy-section-head">
-                <span className="strategy-section-icon">⚡</span>
+                <span className="strategy-section-icon"><Lightbulb size={18} /></span>
                 <div>
                   <h5>{t('market.quickWins')}</h5>
                   <p>{t('market.quickWinsSub')}</p>
                 </div>
               </div>
-              <div className="bonus-list">
+              <div className="bonus-list market-quick-list">
                 {quickWins.map((w, i) => (
                   <div className="bonus-item" key={i}>
-                    <div className="bonus-win"><b>{i + 1}.</b> {w}</div>
+                    <span className="market-step">{i + 1}</span>
+                    <div className="bonus-win">{w}</div>
                   </div>
                 ))}
               </div>
@@ -264,7 +232,7 @@ function MarketInsights() {
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 

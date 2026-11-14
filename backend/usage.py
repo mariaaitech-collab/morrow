@@ -3,11 +3,10 @@
 History exclusively tracks product usage (AI images, competitive analyses,
 content generation, scheduled posts) — never auth events.
 """
-from bson import ObjectId
 from fastapi import Request
 from jose import jwt, JWTError
 
-import mongodb
+import firebase_db
 from config import SECRET_KEY, ALGORITHM, utc_now
 
 
@@ -34,7 +33,7 @@ async def get_optional_user(request: Request):
     email = payload.get("sub")
     if not email:
         return None
-    return await mongodb.users.find_one({"email": email})
+    return await firebase_db.user_by_email(email)
 
 
 async def record_usage(user, type_: str, title: str, detail: str = ""):
@@ -42,8 +41,8 @@ async def record_usage(user, type_: str, title: str, detail: str = ""):
     if not user:
         return
     try:
-        await mongodb.activities.insert_one({
-            "user_id": user["_id"],
+        await firebase_db.activities.add({
+            "user_id": user["id"],
             "type": type_,
             "title": title,
             "detail": detail,

@@ -3,14 +3,13 @@ import toast from 'react-hot-toast';
 import api from '../api/axios';
 import { ensureToken } from '../api/tokens';
 import { useLanguage } from '../i18n/LanguageContext';
-import Navbar from '../components/Navbar';
+import WorkspaceShell from '../components/WorkspaceShell';
 import CropModal from '../components/CropModal';
-import PlatformPreview from '../components/PlatformPreview';
 
 const PLATFORMS = [
-  { value: 'facebook', label: 'Facebook', icon: 'f', color: '#1877f2' },
-  { value: 'linkedin', label: 'LinkedIn', icon: 'in', color: '#0a66c2' },
-  { value: 'instagram', label: 'Instagram', icon: 'ig', color: '#dc2743' },
+  { value: 'facebook', label: 'Facebook', icon: 'f', color: 'var(--platform-facebook)' },
+  { value: 'linkedin', label: 'LinkedIn', icon: 'in', color: 'var(--platform-linkedin)' },
+  { value: 'instagram', label: 'Instagram', icon: 'ig', color: 'var(--platform-instagram)' },
 ];
 
 const WEEKDAYS = ['weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat', 'weekdaySun'];
@@ -45,6 +44,9 @@ function Scheduler({ user, onLogout }) {
   const [mediaType, setMediaType] = useState(null);
   const [cropModal, setCropModal] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Whether "Option B: AI Generation" can be used right now (GET /content/image-provider).
+  const [imageProvider, setImageProvider] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const fileInputRef = useRef(null);
   const formRef = useRef(null);
@@ -75,10 +77,19 @@ function Scheduler({ user, onLogout }) {
     }
   };
 
+  const fetchImageProvider = async () => {
+    try {
+      const { data } = await api.get('/content/image-provider');
+      setImageProvider(data);
+    } catch {
+      // Unknown status: leave Option B as it was rather than block it.
+    }
+  };
+
   const refresh = async () => {
     setLoading(true);
     try {
-      await Promise.all([fetchAccounts(), fetchPosts()]);
+      await Promise.all([fetchAccounts(), fetchPosts(), fetchImageProvider()]);
     } finally {
       setLoading(false);
     }
@@ -90,6 +101,44 @@ function Scheduler({ user, onLogout }) {
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const aiBlocked = Boolean(imageProvider && !imageProvider.available);
+  const retryAt = imageProvider?.retry_at ? new Date(imageProvider.retry_at).getTime() : null;
+
+  // While AI generation is paused, tick once a second for the countdown and
+  // re-check the provider when the pause ends.
+  useEffect(() => {
+    if (!retryAt) return undefined;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    const recheck = setTimeout(fetchImageProvider, Math.min(Math.max(retryAt - Date.now(), 0) + 1000, 2147483647));
+    return () => { clearInterval(tick); clearTimeout(recheck); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryAt]);
+
+  useEffect(() => {
+    if (aiBlocked && mediaMode === 'ai') setMediaMode('upload');
+  }, [aiBlocked, mediaMode]);
+
+  const aiOffLine = () => {
+    if (!aiBlocked) return '';
+    const parts = [t('scheduler.aiOff', { reason: imageProvider.headline || imageProvider.reason })];
+    if (retryAt) {
+      const secs = Math.max(0, Math.ceil((retryAt - now) / 1000));
+      parts.push(secs <= 120
+        ? t('scheduler.aiBackIn', { seconds: secs })
+        : t('scheduler.aiBackAt', { time: new Date(retryAt).toLocaleTimeString(language, { hour: 'numeric', minute: '2-digit' }) }));
+    }
+    parts.push(t('scheduler.aiUseUpload'));
+    return parts.join(' ');
+  };
+
+  // Clean up object URL on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaPreview]);
 
   const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const addDays = (d, n) => {
@@ -120,6 +169,7 @@ function Scheduler({ user, onLogout }) {
     setMediaPreview(null);
     setMediaType(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    fetchImageProvider();
     setFormOpen(true);
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   };
@@ -135,17 +185,18 @@ function Scheduler({ user, onLogout }) {
     setMediaMode('upload');
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
+    // Clean up previous object URL if exists
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
-
     if (isImage) {
       const url = URL.createObjectURL(file);
+      setMediaPreview(url);
       setCropModal({ url, name: file.name });
       setMediaType('image');
       e.target.value = '';
     } else if (isVideo) {
       const url = URL.createObjectURL(file);
-      setMediaFile(file);
       setMediaPreview(url);
+      setMediaFile(file);
       setMediaType('video');
       toast.success(t('scheduler.selected', { name: file.name }));
     } else {
@@ -216,11 +267,17 @@ function Scheduler({ user, onLogout }) {
       } else if (mediaFile) {
         fd.append('media', mediaFile);
       }
-      await api.post('/schedule', fd, { timeout: 300000 });
-      toast.success(mediaMode === 'ai'
-        ? t('scheduler.scheduledAI')
-        : t('scheduler.scheduledOk'));
+      const { data } = await api.post('/schedule', fd, { timeout: 300000 });
+      if (data?.media_error) {
+        // Saved anyway: the post goes out text-only. Say exactly why the image failed.
+        toast(t('scheduler.scheduledImageFailed', { reason: data.media_error }), { icon: '⚠️', duration: 12000 });
+      } else {
+        toast.success(mediaMode === 'ai'
+          ? t('scheduler.scheduledAI')
+          : t('scheduler.scheduledOk'));
+      }
       setFormOpen(false);
+      if (mediaMode === 'ai') fetchImageProvider();
       await fetchPosts();
     } catch (err) {
       const detail = err.response?.data?.detail || err.message || t('scheduler.failedSchedule');
@@ -243,10 +300,10 @@ function Scheduler({ user, onLogout }) {
 
   return (
     <>
-      <Navbar user={user} onLogout={onLogout} active="scheduler" />
-      <div className="scheduler-page">
+      <WorkspaceShell user={user} onLogout={onLogout} active="scheduler">
+      <div className="m-page scheduler-page">
         <div className="scheduler-head">
-          <h2>{t('scheduler.title')}</h2>
+          <h1>{t('scheduler.title')}</h1>
           <div className="week-nav">
             <button className="btn btn-outline btn-sm" onClick={() => setWeekOffset((w) => w - 1)}>{t('scheduler.prev')}</button>
             <span className="week-label">
@@ -285,10 +342,20 @@ function Scheduler({ user, onLogout }) {
                           <span className="sched-card-time">
                             {new Date(p.scheduled_at).toLocaleTimeString(language, { hour: 'numeric', minute: '2-digit' })}
                           </span>
-                          <span className={`sched-status ${STATUS_META[p.status]?.cls || 'pending'}`}>
-                            {statusLabel(p.status)}
-                          </span>
+                          {!(p.media_error && p.status === 'pending') && (
+                            <span className={`sched-status ${STATUS_META[p.status]?.cls || 'pending'}`}>
+                              {statusLabel(p.status)}
+                            </span>
+                          )}
                         </div>
+                        {p.media_error && p.status === 'pending' && (
+                          <span className="sched-status image-failed">{t('scheduler.statusImageFailed')}</span>
+                        )}
+                        {p.media_error && (
+                          <p className="sched-media-error" title={p.media_error}>
+                            {t('scheduler.imageFailedReason', { reason: p.media_error })}
+                          </p>
+                        )}
                         <div className="sched-card-platforms">
                           {p.platforms.map((pl) => (
                             <span key={pl} className="sched-chip">{PLATFORMS.find((x) => x.value === pl)?.label || pl}</span>
@@ -350,7 +417,7 @@ function Scheduler({ user, onLogout }) {
                       key={p.value}
                       type="button"
                       className={`platform-btn ${active ? 'active' : ''} ${isConnected ? 'connected' : 'disconnected'}`}
-                      style={active ? { borderColor: p.color, background: `${p.color}22` } : undefined}
+                      style={active ? { borderColor: p.color, background: `color-mix(in srgb, ${p.color} 14%, var(--surface))` } : undefined}
                       onClick={() => togglePlatform(p.value)}
                     >
                       <span className="platform-btn-icon" style={{ background: p.color }}>
@@ -383,11 +450,6 @@ function Scheduler({ user, onLogout }) {
             </div>
 
             <div className="form-field">
-              <label>{t('scheduler.preview')}</label>
-              <PlatformPreview caption={caption} mediaUrl={mediaPreview} mediaType={mediaType} />
-            </div>
-
-            <div className="form-field">
               <label>{t('scheduler.media')}</label>
               <div className="media-toggle">
                 <button
@@ -401,10 +463,15 @@ function Scheduler({ user, onLogout }) {
                   type="button"
                   className={`media-toggle-btn ${mediaMode === 'ai' ? 'active' : ''}`}
                   onClick={() => setMediaMode('ai')}
+                  disabled={aiBlocked}
+                  title={aiBlocked ? imageProvider.reason : undefined}
                 >
                   {t('scheduler.optionAI')}
                 </button>
               </div>
+              {aiBlocked && (
+                <p className="sched-note warn" role="status" title={imageProvider.reason}>⚠️ {aiOffLine()}</p>
+              )}
 
               {mediaMode === 'upload' ? (
                 <div className="media-upload-section">
@@ -450,7 +517,7 @@ function Scheduler({ user, onLogout }) {
             </div>
 
             <div className="sched-actions">
-              <button className="btn btn-primary btn-lg" onClick={submitSchedule} disabled={saving}>
+              <button type="button" className="btn btn-highlight btn-lg" onClick={submitSchedule} disabled={saving}>
                 {saving ? <><span className="spinner-sm" /> {t('scheduler.schedulePost')}…</> : '📅 ' + t('scheduler.scheduleBtn')}
               </button>
             </div>
@@ -466,6 +533,7 @@ function Scheduler({ user, onLogout }) {
           />
         )}
       </div>
+      </WorkspaceShell>
     </>
   );
 }

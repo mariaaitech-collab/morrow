@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
+import { MessageCircle, X } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
-// Per-language content for the BrandAura Guide. `en` is the source of truth;
+// Per-language content for the Morrow Guide. `en` is the source of truth;
 // any language without a full block gracefully falls back to English, which
 // matches the app-wide i18n behaviour.
 const LANG_CONTENT = {
   en: {
-    welcome: 'Hi! 👋 I’m your BrandAura expert guide. Ask me anything about the platform — connecting accounts, media, scheduling, or fixing errors.',
-    fallback: 'Thank you for your question. I’m the BrandAura onboarding guide and I can help with connecting accounts, cropping and uploading media, auto-scheduling, content generation, and fixing Meta or LinkedIn errors. Please rephrase your question around one of those topics.',
-    developedBy: 'BrandAura was developed by Maria Shafqat, CEO of Meveryx, in collaboration with co-founder Zahra Imran.',
+    welcome: 'Hi! 👋 I’m your Morrow expert guide. Ask me anything about the platform — connecting accounts, media, scheduling, or fixing errors.',
+    fallback: 'Thank you for your question. I’m the Morrow onboarding guide and I can help with connecting accounts, cropping and uploading media, auto-scheduling, content generation, and fixing Meta or LinkedIn errors. Please rephrase your question around one of those topics.',
+    developedBy: 'Morrow was developed by Maria Shafqat, CEO of Meveryx, in collaboration with co-founder Zahra Imran.',
     quick: {
       connect: '🔗 How do I connect Instagram/Facebook/LinkedIn?',
       media: '🖼️ How do I crop & upload media?',
@@ -39,7 +40,7 @@ const LANG_CONTENT = {
         lines: [
           'Open "Auto Scheduler" from the Dashboard or visit the Scheduler page.',
           'Write or paste a caption, optionally attach media, pick the platforms, and choose a cadence or best-time window.',
-          'BrandAura can also bulk-plan multiple posts across dates.',
+          'Morrow can also bulk-plan multiple posts across dates.',
           'The scheduler runs 24/7 in the background and auto-publishes at the chosen times. Track everything in the Calendar and History pages.',
         ],
       },
@@ -49,7 +50,7 @@ const LANG_CONTENT = {
           'Facebook/Instagram publish failures usually fall into two buckets.',
           '① Token errors ("No Facebook Pages found", OAuth 190) mean the Facebook session was invalidated or the Page list is empty — reconnect the account from the Dashboard and verify the FB App is Live with you as a tester.',
           '② Page access errors ((#200) permission) mean that Page is not managed by the connected account — add your profile in the Facebook Page settings → Page access.',
-          'LinkedIn errors usually mean the account needs reconnecting so BrandAura can read your real profile. After any change, reconnect and publish again.',
+          'LinkedIn errors usually mean the account needs reconnecting so Morrow can read your real profile. After any change, reconnect and publish again.',
         ],
       },
       generate: {
@@ -62,15 +63,15 @@ const LANG_CONTENT = {
         ],
       },
       identity: {
-        keywords: ['who developed', 'who made', 'who created', 'who built', 'developer', 'founder', 'maker', 'created brandaura', 'made brandaura'],
-        lines: ['BrandAura was developed by Maria Shafqat, CEO of Meveryx, in collaboration with co-founder Zahra Imran.'],
+        keywords: ['who developed', 'who made', 'who created', 'who built', 'developer', 'founder', 'maker', 'created morrow', 'made brandaura'],
+        lines: ['Morrow was developed by Maria Shafqat, CEO of Meveryx, in collaboration with co-founder Zahra Imran.'],
       },
     },
   },
   es: {
-    welcome: '¡Hola! 👋 Soy tu guía experto de BrandAura. Pregúntame lo que quieras sobre la plataforma: conectar cuentas, medios, programación o resolver errores.',
-    fallback: 'Gracias por tu pregunta. Soy el guía de introducción de BrandAura y puedo ayudarte a conectar cuentas, recortar y subir medios, programar publicaciones automáticas, generar contenido y solucionar errores de Meta o LinkedIn. Por favor, reformula tu pregunta en torno a uno de esos temas.',
-    developedBy: 'BrandAura fue desarrollado por Maria Shafqat, CEO de Meveryx, en colaboración con la cofundadora Zahra Imran.',
+    welcome: '¡Hola! 👋 Soy tu guía experto de Morrow. Pregúntame lo que quieras sobre la plataforma: conectar cuentas, medios, programación o resolver errores.',
+    fallback: 'Gracias por tu pregunta. Soy el guía de introducción de Morrow y puedo ayudarte a conectar cuentas, recortar y subir medios, programar publicaciones automáticas, generar contenido y solucionar errores de Meta o LinkedIn. Por favor, reformula tu pregunta en torno a uno de esos temas.',
+    developedBy: 'Morrow fue desarrollado por Maria Shafqat, CEO de Meveryx, en colaboración con la cofundadora Zahra Imran.',
     quick: {
       connect: '🔗 ¿Cómo conecto Instagram/Facebook/LinkedIn?',
       media: '🖼️ ¿Cómo recorto y subo imágenes o videos?',
@@ -101,7 +102,7 @@ const LANG_CONTENT = {
         lines: [
           'Abre "Programador automático" desde el Panel de control o ve a la página del Programador.',
           'Escribe o pega un texto, añade medios si quieres, elige las plataformas y selecciona una cadencia o la mejor franja horaria.',
-          'BrandAura también puede planificar varias publicaciones en fechas distintas.',
+          'Morrow también puede planificar varias publicaciones en fechas distintas.',
           'El programador funciona 24/7 en segundo plano y publica automáticamente. Haz seguimiento en Calendario e Historial.',
         ],
       },
@@ -125,14 +126,14 @@ const LANG_CONTENT = {
       },
       identity: {
         keywords: ['quién desarrolló', 'quien desarrollo', 'quién creó', 'quien creo', 'quién hizo', 'desarrollador', 'fundador', 'creador'],
-        lines: ['BrandAura fue desarrollado por Maria Shafqat, CEO de Meveryx, en colaboración con la cofundadora Zahra Imran.'],
+        lines: ['Morrow fue desarrollado por Maria Shafqat, CEO de Meveryx, en colaboración con la cofundadora Zahra Imran.'],
       },
     },
   },
   fr: {
-    welcome: 'Bonjour ! 👋 Je suis votre guide expert BrandAura. Posez-moi toutes vos questions sur la plateforme : connexion des comptes, médias, planification ou résolution d’erreurs.',
-    fallback: 'Merci pour votre question. Je suis le guide de prise en main de BrandAura et je peux vous aider à connecter des comptes, recadrer et téléverser des médias, planifier des publications automatiques, générer du contenu et résoudre les erreurs Meta ou LinkedIn. Merci de reformuler votre question autour de l’un de ces sujets.',
-    developedBy: 'BrandAura a été développé par Maria Shafqat, PDG de Meveryx, en collaboration avec la cofondatrice Zahra Imran.',
+    welcome: 'Bonjour ! 👋 Je suis votre guide expert Morrow. Posez-moi toutes vos questions sur la plateforme : connexion des comptes, médias, planification ou résolution d’erreurs.',
+    fallback: 'Merci pour votre question. Je suis le guide de prise en main de Morrow et je peux vous aider à connecter des comptes, recadrer et téléverser des médias, planifier des publications automatiques, générer du contenu et résoudre les erreurs Meta ou LinkedIn. Merci de reformuler votre question autour de l’un de ces sujets.',
+    developedBy: 'Morrow a été développé par Maria Shafqat, PDG de Meveryx, en collaboration avec la cofondatrice Zahra Imran.',
     quick: {
       connect: '🔗 Comment connecter Instagram/Facebook/LinkedIn ?',
       media: '🖼️ Comment recadrer et téléverser des médias ?',
@@ -163,7 +164,7 @@ const LANG_CONTENT = {
         lines: [
           'Ouvrez « Planificateur automatique » depuis le Tableau de bord ou la page Planificateur.',
           'Écrivez ou collez un texte, joignez éventuellement un média, choisissez les plateformes et une cadence ou un créneau horaire optimal.',
-          'BrandAura peut aussi planifier plusieurs publications sur différentes dates.',
+          'Morrow peut aussi planifier plusieurs publications sur différentes dates.',
           'Le planificateur tourne 24h/24 en arrière-plan et publie automatiquement. Suivez tout dans le Calendrier et l’Historique.',
         ],
       },
@@ -187,14 +188,14 @@ const LANG_CONTENT = {
       },
       identity: {
         keywords: ['qui a développé', 'qui a créé', 'qui a fait', 'développeur', 'créateur', 'fondateur'],
-        lines: ['BrandAura a été développé par Maria Shafqat, PDG de Meveryx, en collaboration avec la cofondatrice Zahra Imran.'],
+        lines: ['Morrow a été développé par Maria Shafqat, PDG de Meveryx, en collaboration avec la cofondatrice Zahra Imran.'],
       },
     },
   },
   de: {
-    welcome: 'Hallo! 👋 Ich bin Ihr BrandAura-Experten-Guide. Fragen Sie mich alles zur Plattform: Konten verbinden, Medien, Planung oder Fehlerbehebung.',
-    fallback: 'Vielen Dank für Ihre Frage. Ich bin der Einführungs-Guide von BrandAura und kann Ihnen beim Verbinden von Konten, Zuschneiden und Hochladen von Medien, automatischer Planung, Content-Erstellung und bei Meta- oder LinkedIn-Fehlern helfen. Bitte formulieren Sie Ihre Frage zu einem dieser Themen neu.',
-    developedBy: 'BrandAura wurde von Maria Shafqat, CEO von Meveryx, in Zusammenarbeit mit Mitgründerin Zahra Imran entwickelt.',
+    welcome: 'Hallo! 👋 Ich bin Ihr Morrow-Experten-Guide. Fragen Sie mich alles zur Plattform: Konten verbinden, Medien, Planung oder Fehlerbehebung.',
+    fallback: 'Vielen Dank für Ihre Frage. Ich bin der Einführungs-Guide von Morrow und kann Ihnen beim Verbinden von Konten, Zuschneiden und Hochladen von Medien, automatischer Planung, Content-Erstellung und bei Meta- oder LinkedIn-Fehlern helfen. Bitte formulieren Sie Ihre Frage zu einem dieser Themen neu.',
+    developedBy: 'Morrow wurde von Maria Shafqat, CEO von Meveryx, in Zusammenarbeit mit Mitgründerin Zahra Imran entwickelt.',
     quick: {
       connect: '🔗 Wie verbinde ich Instagram/Facebook/LinkedIn?',
       media: '🖼️ Wie schneide ich Medien zu und lade sie hoch?',
@@ -225,7 +226,7 @@ const LANG_CONTENT = {
         lines: [
           'Öffnen Sie „Autoplaner“ im Dashboard oder besuchen Sie die Planer-Seite.',
           'Schreiben Sie einen Text, hängen Sie optional Medien an, wählen Sie Plattformen und eine Kadenz oder ein Zeitfenster.',
-          'BrandAura kann auch mehrere Beiträge über mehrere Daten planen.',
+          'Morrow kann auch mehrere Beiträge über mehrere Daten planen.',
           'Der Planer läuft rund um die Uhr und veröffentlicht automatisch. Verfolgen Sie alles im Kalender und im Verlauf.',
         ],
       },
@@ -249,7 +250,7 @@ const LANG_CONTENT = {
       },
       identity: {
         keywords: ['wer hat entwickelt', 'wer hat erstellt', 'wer hat gebaut', 'entwickelt', 'ersteller', 'gründer', 'gründerin'],
-        lines: ['BrandAura wurde von Maria Shafqat, CEO von Meveryx, in Zusammenarbeit mit Mitgründerin Zahra Imran entwickelt.'],
+        lines: ['Morrow wurde von Maria Shafqat, CEO von Meveryx, in Zusammenarbeit mit Mitgründerin Zahra Imran entwickelt.'],
       },
     },
   },
@@ -378,9 +379,9 @@ const LANG_CONTENT = {
     },
   },
   hi: {
-    welcome: 'नमस्ते! 👋 मैं BrandAura का विशेषज्ञ गाइड हूँ। प्लेटफ़ॉर्म के बारे में कुछ भी पूछें — अकाउंट कनेक्ट करना, मीडिया, शेड्यूलिंग या त्रुटियाँ ठीक करना।',
-    fallback: 'आपके प्रश्न के लिए धन्यवाद। मैं BrandAura का ऑनबोर्डिंग गाइड हूँ और अकाउंट कनेक्ट करने, मीडिया क्रॉप व अपलोड करने, ऑटो-शेड्यूलिंग, कंटेंट बनाने और Meta या LinkedIn की त्रुटियाँ सुलझाने में मदद कर सकता हूँ। कृपया अपना प्रश्न इनमें से किसी विषय पर दोबारा पूछें।',
-    developedBy: 'BrandAura को मारिया शफ्कत (Meveryx की CEO) और सह-संस्थापक ज़हरा इमरान के सहयोग से विकसित किया गया है।',
+    welcome: 'नमस्ते! 👋 मैं Morrow का विशेषज्ञ गाइड हूँ। प्लेटफ़ॉर्म के बारे में कुछ भी पूछें — अकाउंट कनेक्ट करना, मीडिया, शेड्यूलिंग या त्रुटियाँ ठीक करना।',
+    fallback: 'आपके प्रश्न के लिए धन्यवाद। मैं Morrow का ऑनबोर्डिंग गाइड हूँ और अकाउंट कनेक्ट करने, मीडिया क्रॉप व अपलोड करने, ऑटो-शेड्यूलिंग, कंटेंट बनाने और Meta या LinkedIn की त्रुटियाँ सुलझाने में मदद कर सकता हूँ। कृपया अपना प्रश्न इनमें से किसी विषय पर दोबारा पूछें।',
+    developedBy: 'Morrow को मारिया शफ्कत (Meveryx की CEO) और सह-संस्थापक ज़हरा इमरान के सहयोग से विकसित किया गया है।',
     quick: {
       connect: '🔗 Instagram/Facebook/LinkedIn कैसे कनेक्ट करें?',
       media: '🖼️ मीडिया क्रॉप और अपलोड कैसे करें?',
@@ -411,7 +412,7 @@ const LANG_CONTENT = {
         lines: [
           'Dashboard से «Auto Scheduler» खोलें या Scheduler पेज पर जाएँ।',
           'कैप्शन लिखें या पेस्ट करें, वैकल्पिक मीडिया जोड़ें, प्लेटफ़ॉर्म चुनें और कैडेंस या बेस्ट-टाइम विंडो चुनें।',
-          'BrandAura कई पोस्ट्स को अलग-अलग तारीखों पर भी प्लान कर सकता है।',
+          'Morrow कई पोस्ट्स को अलग-अलग तारीखों पर भी प्लान कर सकता है।',
           'शेड्यूलर 24/7 बैकग्राउंड में चलता है और चुने हुए समय पर ऑटो-पब्लिश करता है। Calendar और History में सब ट्रैक करें।',
         ],
       },
@@ -435,7 +436,7 @@ const LANG_CONTENT = {
       },
       identity: {
         keywords: ['किसने बनाया', 'किसने विकसित', 'डेवलपर', 'संस्थापक', 'निर्माता'],
-        lines: ['BrandAura को मारिया शफ्कत (Meveryx की CEO) और सह-संस्थापक ज़हरा इमरान के सहयोग से विकसित किया गया है।'],
+        lines: ['Morrow को मारिया शफ्कत (Meveryx की CEO) और सह-संस्थापक ज़हरा इमरान के सहयोग से विकसित किया गया है।'],
       },
     },
   },
@@ -615,7 +616,7 @@ function GuideBot({ onNavigate }) {
           <div className="guidebot-header">
             <div className="guidebot-avatar">🤖</div>
             <div>
-              <div className="guidebot-title">BrandAura Guide</div>
+              <div className="guidebot-title">Morrow Guide</div>
               <div className="guidebot-status">● Online — expert help</div>
             </div>
             <button
@@ -660,9 +661,9 @@ function GuideBot({ onNavigate }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') send(input); }}
-              placeholder="Ask about BrandAura…"
+              placeholder="Ask about Morrow…"
             />
-            <button className="guidebot-send" onClick={() => send(input)} disabled={typing || !input.trim()}>➤</button>
+            <button className="guidebot-send tech-action-btn" onClick={() => send(input)} disabled={typing || !input.trim()}>➤</button>
           </div>
         </div>
       )}
@@ -670,10 +671,10 @@ function GuideBot({ onNavigate }) {
       <button
         className="guidebot-fab"
         onClick={() => setOpen((o) => !o)}
-        aria-label="Toggle BrandAura guide"
-        title="BrandAura guide"
+        aria-label="Toggle Morrow guide"
+        title="Morrow guide"
       >
-        {open ? '✕' : '🤖'}
+        {open ? <X size={24} strokeWidth={1.75} aria-hidden="true" /> : <MessageCircle size={24} strokeWidth={1.75} aria-hidden="true" />}
       </button>
     </>
   );

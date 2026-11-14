@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
-// Workflow persistence layer for BrandAura.
+// Workflow persistence layer for Morrow.
 //
 // All generator state (topic, tone, platforms, generated content, image prompt,
 // media metadata, publish results, brand profile, market brief) lives here at

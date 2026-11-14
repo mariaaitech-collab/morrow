@@ -36,23 +36,29 @@ export function currentTokenState() {
   try {
     const raw = localStorage.getItem('brandora_user');
     const u = raw ? JSON.parse(raw) : {};
+    const numericTokens = Number(u.free_tokens);
     return {
       isUnlimited: !!u.is_unlimited,
-      tokens: Number.isFinite(u.free_tokens) ? u.free_tokens : 0,
+      hasTokenBalance: u.free_tokens !== undefined && u.free_tokens !== null && u.free_tokens !== '',
+      tokens: Number.isFinite(numericTokens) ? numericTokens : 0,
     };
   } catch {
-    return { isUnlimited: false, tokens: 0 };
+    return { isUnlimited: false, hasTokenBalance: false, tokens: 0 };
   }
 }
 
-// Return true if the caller may perform a token-consuming action. If not (and
-// not unlimited), instantly opens the Pricing Paywall Modal and returns false
-// so the button handler bails out BEFORE firing the API request.
+// Return true if the caller may perform a token-consuming action. The backend
+// is the source of truth for credits; if a user is truly out, the API returns
+// 402 and the global axios handler opens the Pricing Modal.
 export function ensureToken() {
-  const { isUnlimited, tokens } = currentTokenState();
+  const { isUnlimited, hasTokenBalance, tokens } = currentTokenState();
+  // Right after login/register the stored user can briefly exist without a
+  // balance until /auth/me syncs. Let the API decide instead of showing a
+  // false paywall for users who still have credits.
+  if (!hasTokenBalance) return true;
   if (isUnlimited || tokens > 0) return true;
-  window.dispatchEvent(new CustomEvent('brandora:upgrade-required'));
-  return false;
+  refreshTokenBalance();
+  return true;
 }
 
 // Fetch the latest token balance from /auth/me and publish it.

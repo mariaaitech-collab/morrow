@@ -2,46 +2,133 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
 import { useLanguage } from '../i18n/LanguageContext';
-import Navbar from '../components/Navbar';
+import WorkspaceShell from '../components/WorkspaceShell';
 
-// Visual metadata per activity type (labels come from i18n via history.type.*).
-const TYPE_ICON = {
-  generated_image: '🖼️',
-  analysis: '📊',
-  generated_text: '✍️',
-  scheduled_post: '🚀',
-  social_connect: '🔗',
-  social_disconnect: '✂️',
-  login: '🔓',
-  password_change: '🔑',
+/* ── Type metadata ── */
+const TYPE_META = {
+  generated_image:      { label: 'Image',            color: 'hst-badge-image'   },
+  analysis:             { label: 'Analysis',         color: 'hst-badge-analysis'},
+  competitive_analysis: { label: 'Analysis',         color: 'hst-badge-analysis'},
+  generated_text:       { label: 'Caption',          color: 'hst-badge-caption' },
+  content_generation:   { label: 'Caption',          color: 'hst-badge-caption' },
+  scheduled_post:       { label: 'Scheduled',        color: 'hst-badge-sched'   },
+  social_connect:       { label: 'Connected',        color: 'hst-badge-conn'    },
+  social_disconnect:    { label: 'Disconnected',     color: 'hst-badge-disc'    },
+  login:                { label: 'Login',            color: 'hst-badge-login'   },
+  password_change:      { label: 'Security',         color: 'hst-badge-sec'     },
 };
 
+const TYPE_ICON = {
+  generated_image:      <IconImage />,
+  analysis:             <IconAnalysis />,
+  competitive_analysis: <IconAnalysis />,
+  generated_text:       <IconText />,
+  content_generation:   <IconText />,
+  scheduled_post:       <IconScheduled />,
+  social_connect:       <IconConnect />,
+  social_disconnect:    <IconDisconnect />,
+  login:                <IconLogin />,
+  password_change:      <IconSecurity />,
+};
+
+/* ── SVG icons ── */
+function IconImage() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </svg>
+  );
+}
+function IconAnalysis() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10"/>
+      <line x1="12" y1="20" x2="12" y2="4"/>
+      <line x1="6" y1="20" x2="6" y2="14"/>
+    </svg>
+  );
+}
+function IconText() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+    </svg>
+  );
+}
+function IconScheduled() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  );
+}
+function IconConnect() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+  );
+}
+function IconDisconnect() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+      <line x1="12" y1="2" x2="12" y2="12"/>
+    </svg>
+  );
+}
+function IconLogin() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+      <polyline points="10 17 15 12 10 7"/>
+      <line x1="15" y1="12" x2="3" y2="12"/>
+    </svg>
+  );
+}
+function IconSecurity() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+  );
+}
+
+function IconTrash() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6"/><path d="M14 11v6"/>
+      <path d="M9 6V4h6v2"/>
+    </svg>
+  );
+}
+
+/* ── Date formatter ── */
 function formatDate(iso, locale) {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString(locale, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
   });
 }
 
+/* ── Bare checkbox ── */
 function Checkbox({ checked, onChange, ariaLabel }) {
   return (
-    <label className="relative inline-flex cursor-pointer select-none items-center">
+    <label className="hst-checkbox-wrap">
       <input type="checkbox" className="sr-only" checked={checked} onChange={onChange} aria-label={ariaLabel} />
-      <span
-        className={`flex h-5 w-5 items-center justify-center rounded-md border transition-all duration-200 ${
-          checked
-            ? 'border-fuchsia-400 bg-fuchsia-400 shadow-[0_0_12px_rgba(45,212,191,0.45)]'
-            : 'border-white/20 bg-[#0A1929] hover:border-white/40'
-        }`}
-      >
+      <span className={`hst-checkbox ${checked ? 'hst-checkbox-on' : ''}`}>
         {checked && (
-          <svg className="h-3.5 w-3.5 text-[#063b30]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6 9 17l-5-5" />
           </svg>
         )}
@@ -50,6 +137,7 @@ function Checkbox({ checked, onChange, ariaLabel }) {
   );
 }
 
+/* ── Main page ── */
 export default function History({ user, onLogout }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,9 +156,7 @@ export default function History({ user, onLogout }) {
     }
   }, []);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
   const ids = useMemo(() => items.map((i) => i.id), [items]);
   const allSelected = ids.length > 0 && selected.size === ids.length;
@@ -79,24 +165,20 @@ export default function History({ user, onLogout }) {
   const toggleOne = useCallback((id) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   }, []);
 
   const toggleAll = useCallback(() => {
-    setSelected((prev) =>
-      prev.size === ids.length && ids.length > 0 ? new Set() : new Set(ids)
-    );
+    setSelected((prev) => prev.size === ids.length && ids.length > 0 ? new Set() : new Set(ids));
   }, [ids]);
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
-    const idsToDelete = Array.from(selected);
     setBusy(true);
     try {
-      const { data } = await api.delete('/user/history', { data: { record_ids: idsToDelete } });
+      const { data } = await api.delete('/user/history', { data: { record_ids: Array.from(selected) } });
       setItems((prev) => prev.filter((i) => !selected.has(i.id)));
       setSelected(new Set());
       toast.success(t('history.deleted', { count: data.deleted_count, plural: data.deleted_count === 1 ? '' : 's' }));
@@ -124,78 +206,115 @@ export default function History({ user, onLogout }) {
   };
 
   return (
-    <>
-      <Navbar user={user} onLogout={onLogout} active="history" />
-      <div className="dashboard">
-        <div className="mb-6">
-          <h2>{t('history.title')}</h2>
-          <p className="mt-1 text-sm text-slate-300">
-            {t('history.subtitle')}
-          </p>
+    <WorkspaceShell user={user} onLogout={onLogout} active="history">
+      <div className="m-page history-page">
+
+        {/* ── Page header ── */}
+        <div className="hst-page-header">
+          <div>
+            <h1 className="hst-page-title">{t('history.title')}</h1>
+            <p className="hst-page-sub">{t('history.subtitle')}</p>
+          </div>
+          <div className="hst-page-stat">
+            <span className="hst-stat-num">{items.length}</span>
+            <span className="hst-stat-label">total events</span>
+          </div>
         </div>
 
-        <div className="sticky top-20 z-30 mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-[#0F2D3D]/80 px-4 py-3 shadow-lg shadow-black/30 backdrop-blur-2xl">
-           <Checkbox checked={allSelected} onChange={toggleAll} ariaLabel={t('history.selectAll')} />
-           <span className="select-none text-sm text-slate-300">{t('history.selectAll')}</span>
-           <span className="text-sm text-slate-500">·</span>
-           <span className="text-sm text-slate-400">{t('history.selected', { count: selected.size })}</span>
+        {/* ── Toolbar ── */}
+        <div className="hst-toolbar">
+          <div className="hst-toolbar-left">
+            <Checkbox checked={allSelected} onChange={toggleAll} ariaLabel={t('history.selectAll')} />
+            <span className="hst-toolbar-count">
+              {someSelected ? `${selected.size} selected` : `${items.length} events`}
+            </span>
+          </div>
+          <div className="hst-toolbar-right">
+            <button
+              className="hst-btn hst-btn-danger"
+              onClick={deleteSelected}
+              disabled={!someSelected || busy}
+            >
+              <IconTrash />
+              {t('history.deleteSelected')}
+            </button>
+            <button
+              className="hst-btn hst-btn-ghost"
+              onClick={clearAll}
+              disabled={items.length === 0 || busy}
+            >
+              {t('history.clearAll')}
+            </button>
+          </div>
+        </div>
 
-           <div className="ml-auto flex items-center gap-3">
-             <button
-               onClick={deleteSelected}
-               disabled={!someSelected || busy}
-               className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-400/10 to-fuchsia-400/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition-all duration-200 ease-out hover:border-fuchsia-400/50 hover:from-fuchsia-400/20 hover:to-fuchsia-400/20 hover:shadow-[0_0_22px_rgba(45,212,191,0.25)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none disabled:active:scale-100"
-             >
-               {t('history.deleteSelected')}
-             </button>
-             <button
-               onClick={clearAll}
-               disabled={items.length === 0 || busy}
-               className="inline-flex items-center gap-2 rounded-xl border border-rose-500/30 bg-gradient-to-r from-rose-500/10 to-red-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition-all duration-200 ease-out hover:border-rose-400/50 hover:from-rose-500/20 hover:to-red-500/20 hover:shadow-[0_0_22px_rgba(244,63,94,0.25)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-             >
-               {t('history.clearAll')}
-             </button>
-           </div>
-         </div>
+        {/* ── Table ── */}
+        {loading ? (
+          <div className="hst-empty">
+            <div className="hst-empty-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+            <p>{t('history.loading')}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="hst-empty">
+            <div className="hst-empty-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <p>{t('history.noActivity')}</p>
+            <span>{t('history.noActivityHint')}</span>
+          </div>
+        ) : (
+          <div className="hst-table">
+            {/* Table header */}
+            <div className="hst-thead">
+              <div className="hst-th hst-col-check" />
+              <div className="hst-th hst-col-type">Type</div>
+              <div className="hst-th hst-col-event">Event</div>
+              <div className="hst-th hst-col-detail">Detail</div>
+              <div className="hst-th hst-col-date">Timestamp</div>
+            </div>
 
-         {loading ? (
-           <div className="rounded-2xl border border-white/10 bg-[#0F2D3D]/60 px-4 py-10 text-center text-slate-400">
-             {t('history.loading')}
-           </div>
-         ) : items.length === 0 ? (
-           <div className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-[#0F2D3D]/60 px-4 py-16 text-center">
-             <span className="text-3xl text-fuchsia-300/80">✦</span>
-             <p className="text-slate-300">{t('history.noActivity')}</p>
-             <p className="text-sm text-slate-400">{t('history.noActivityHint')}</p>
-           </div>
-         ) : (
-          <div className="flex flex-col gap-2">
-             {items.map((item) => {
-                const metaIcon = TYPE_ICON[item.type] || '•';
-                const metaLabel = t('history.type.' + item.type);
-               const isSel = selected.has(item.id);
-               return (
-                 <div
-                   key={item.id}
-                   className={`group flex items-center gap-4 rounded-2xl border px-4 py-4 transition-all duration-200 ${
-                     isSel ? 'border-fuchsia-400/40 bg-fuchsia-400/[0.06]' : 'border-white/10 bg-[#0F2D3D]/60 hover:border-white/20'
-                   }`}
-                 >
-                    <Checkbox checked={isSel} onChange={() => toggleOne(item.id)} ariaLabel={t('history.selectItem', { title: item.title })} />
-                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg">
-                     {metaIcon}
-                   </div>
-                   <div className="min-w-0 flex-1">
-                     <div className="truncate font-semibold text-white">{item.title || metaLabel}</div>
-                     {item.detail && <div className="truncate text-sm text-slate-400">{item.detail}</div>}
-                   </div>
-                   <div className="shrink-0 text-xs text-slate-500">{formatDate(item.created_at, language)}</div>
-                 </div>
-               );
-             })}
+            {/* Rows */}
+            <div className="hst-tbody">
+              {items.map((item, idx) => {
+                const meta   = TYPE_META[item.type] || { label: item.type, color: 'hst-badge-login' };
+                const icon   = TYPE_ICON[item.type] || <span>•</span>;
+                const isSel  = selected.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className={`hst-row ${isSel ? 'hst-row-selected' : ''} ${idx % 2 === 1 ? 'hst-row-alt' : ''}`}
+                    onClick={() => toggleOne(item.id)}
+                  >
+                    <div className="hst-td hst-col-check" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={isSel} onChange={() => toggleOne(item.id)} ariaLabel={t('history.selectItem', { title: item.title })} />
+                    </div>
+                    <div className="hst-td hst-col-type">
+                      <span className={`hst-badge ${meta.color}`}>
+                        {icon}
+                        {meta.label}
+                      </span>
+                    </div>
+                    <div className="hst-td hst-col-event">
+                      <span className="hst-event-title">{item.title || meta.label}</span>
+                    </div>
+                    <div className="hst-td hst-col-detail">
+                      {item.detail
+                        ? <span className="hst-detail">{item.detail}</span>
+                        : <span className="hst-detail-empty">—</span>
+                      }
+                    </div>
+                    <div className="hst-td hst-col-date">
+                      <span className="hst-date">{formatDate(item.created_at, language)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
-    </>
+    </WorkspaceShell>
   );
 }

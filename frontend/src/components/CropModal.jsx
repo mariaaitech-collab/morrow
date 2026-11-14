@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useDialog } from './ui';
 
 const ASPECT_RATIOS = [
   { label: '1:1', value: 1, key: 'square' },
@@ -58,6 +59,8 @@ function CropModal({ imageUrl, originalName, onCancel, onApply }) {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [processing, setProcessing] = useState(false);
   const imageUrlRef = useRef(imageUrl);
+  // Escape cancels (not while the crop is being applied, like the Cancel button).
+  const dialogRef = useDialog(true, () => { if (!processing) onCancel(); });
 
   const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -77,9 +80,9 @@ function CropModal({ imageUrl, originalName, onCancel, onApply }) {
 
   return (
     <div className="crop-modal-overlay" onClick={onCancel}>
-      <div className="crop-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="crop-modal" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="crop-modal-title" onClick={(e) => e.stopPropagation()}>
         <div className="crop-modal-header">
-          <h4>{t('cropModal.title')}</h4>
+          <h4 id="crop-modal-title">{t('cropModal.title')}</h4>
           <span className="crop-file-name">{originalName}</span>
         </div>
 
@@ -126,7 +129,7 @@ function CropModal({ imageUrl, originalName, onCancel, onApply }) {
           <button className="btn btn-outline" onClick={onCancel} disabled={processing}>
             {t('cropModal.cancel')}
           </button>
-          <button className="btn bg-gradient-to-r from-fuchsia-400/10 to-fuchsia-400/10 text-fuchsia-100 border border-fuchsia-500/30 transition-all duration-200 ease-out hover:from-fuchsia-400/20 hover:to-fuchsia-400/20 hover:border-fuchsia-400/50 hover:shadow-[0_0_22px_rgba(45,212,191,0.25)] active:scale-95" onClick={handleApply} disabled={processing}>
+          <button className="btn tech-action-btn" onClick={handleApply} disabled={processing}>
             {processing ? <><span className="spinner-sm" /> {t('cropModal.applying')}</> : t('cropModal.apply')}
           </button>
         </div>

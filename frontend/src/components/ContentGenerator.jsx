@@ -1,30 +1,40 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaFacebookF, FaLinkedinIn, FaInstagram } from 'react-icons/fa';
+import { FaFacebookF, FaLinkedinIn, FaInstagram, FaTiktok } from 'react-icons/fa';
 import api from '../api/axios';
 import { ensureToken } from '../api/tokens';
 import CropModal from './CropModal';
 import MarketInsights from './MarketInsights';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useDraft } from '../draft/DraftContext';
+import '../styles/studio.css';
 
 const TONES = [
-  { value: 'viral', icon: '🔥' },
-  { value: 'professional', icon: '💼' },
-  { value: 'educational', icon: '📚' },
-  { value: 'promotional', icon: '🎯' },
+  { value: 'viral' },
+  { value: 'professional' },
+  { value: 'educational' },
+  { value: 'promotional' },
 ];
 
 const PLATFORMS = [
-  { value: 'facebook', label: 'Facebook', icon: <FaFacebookF />, color: '#1877f2' },
-  { value: 'linkedin', label: 'LinkedIn', icon: <FaLinkedinIn />, color: '#0a66c2' },
-  { value: 'instagram', label: 'Instagram', icon: <FaInstagram />, color: '#dc2743' },
+  { value: 'facebook', label: 'Facebook', icon: <FaFacebookF />, color: 'var(--platform-facebook)' },
+  { value: 'linkedin', label: 'LinkedIn', icon: <FaLinkedinIn />, color: 'var(--platform-linkedin)' },
+  { value: 'instagram', label: 'Instagram', icon: <FaInstagram />, color: 'var(--platform-instagram)' },
+  // TikTok accepts video only; the backend rejects image posts for it.
+  { value: 'tiktok', label: 'TikTok', icon: <FaTiktok />, color: 'var(--platform-tiktok)' },
 ];
 
+// A TikTok post finishes in the background after /content/publish returns
+// "processing": follow it this often, and stop waiting after this long.
+const TIKTOK_POLL_MS = 4000;
+const TIKTOK_POLL_LIMIT_MS = 10 * 60 * 1000;
+
+const platformName = (value) => PLATFORMS.find((x) => x.value === value)?.label || value;
+
 const PREMIUM_BTN =
-  'bg-gradient-to-r from-fuchsia-400/10 to-fuchsia-400/10 text-fuchsia-100 border border-fuchsia-500/30 transition-all duration-200 ease-out hover:from-fuchsia-400/20 hover:to-fuchsia-400/20 hover:border-fuchsia-400/50 hover:shadow-[0_0_22px_rgba(45,212,191,0.25)] active:scale-95';
+  'tech-action-btn transition-all duration-200 ease-out';
 const SUCCESS_BTN =
-  'bg-gradient-to-r from-emerald-400/10 to-fuchsia-400/10 text-emerald-100 border border-emerald-400/30 transition-all duration-200 ease-out hover:from-emerald-400/20 hover:to-fuchsia-400/20 hover:border-emerald-300/50 hover:shadow-[0_0_22px_rgba(16,185,129,0.25)] active:scale-95';
+  'tech-action-btn transition-all duration-200 ease-out';
 
 const PLATFORM_META = {
   linkedin: { badge: 'badge-linkedin' },
@@ -91,6 +101,12 @@ function ContentGenerator({ accounts }) {
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
   const [publishing, setPublishing] = useState(false);
+  // Platforms in the current publish request (each chip shows a spinner).
+  const [pendingPlatforms, setPendingPlatforms] = useState([]);
+  // Blocks a second request before React re-renders the disabled button.
+  const publishLockRef = useRef(false);
+  // Identifies the running TikTok status poller; null stops it.
+  const tiktokPollRef = useRef(null);
   const [cropModal, setCropModal] = useState(null);
   const [imageGenerating, setImageGenerating] = useState(false);
   const [imageQuotaExceeded, setImageQuotaExceeded] = useState(false);
@@ -145,6 +161,14 @@ function ContentGenerator({ accounts }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaFile]);
 
+  // Clean up object URL on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaPreview]);
+
   const connectedPlatforms = accounts.filter((a) => a.connected).map((a) => a.platform);
 
   const togglePlatform = (p) => {
@@ -156,6 +180,7 @@ function ContentGenerator({ accounts }) {
   };
 
   const handleClearAll = () => {
+    tiktokPollRef.current = null;
     removeMedia();
     setLoading(false);
     clearDraft();
@@ -173,6 +198,7 @@ function ContentGenerator({ accounts }) {
 
     if (isImage) {
       const url = URL.createObjectURL(file);
+      setMediaPreview(url);
       setCropModal({ url, name: file.name });
       setMediaType('image');
       e.target.value = '';
@@ -225,7 +251,7 @@ function ContentGenerator({ accounts }) {
       formData.append('topic', topic.trim());
       formData.append('tone', tone);
       formData.append('language', languageName(language));
-      const { data } = await api.post('/content/generate', formData);
+      const { data } = await api.post('/content/generate', formData, { timeout: 300000 });
       setContent(data);
       toast.success(t('contentGenerator.contentGenerated'));
     } catch (err) {
@@ -331,15 +357,95 @@ function ContentGenerator({ accounts }) {
     }
   };
 
+  // Follow a TikTok post until TikTok reports a final result. Only one poller
+  // runs at a time: starting another, clearing the draft or leaving the page
+  // stops this one (its loop sees tiktokPollRef change and exits).
+  const pollTikTok = async (publishId) => {
+    const run = {};
+    tiktokPollRef.current = run;
+    const deadline = Date.now() + TIKTOK_POLL_LIMIT_MS;
+    const setTikTokResult = (r) =>
+      setDraft((prev) => ({ ...prev, publishResults: { ...(prev.publishResults || {}), tiktok: r } }));
+    let failures = 0;
+    while (tiktokPollRef.current === run) {
+      await new Promise((resolve) => setTimeout(resolve, TIKTOK_POLL_MS));
+      if (tiktokPollRef.current !== run) return;
+      let next;
+      try {
+        const { data } = await api.get(`/content/tiktok/status/${encodeURIComponent(publishId)}`, { timeout: 30000 });
+        failures = 0;
+        next = data;
+      } catch (err) {
+        const code = err.response?.status;
+        if (code >= 400 && code < 500) {
+          const detail = err.response.data?.detail;
+          next = { status: 'error', message: typeof detail === 'string' ? detail : t('contentGenerator.publishFailed') };
+        } else {
+          // Server or network hiccup: try a few more times before giving up.
+          failures += 1;
+          if (failures < 4 && Date.now() < deadline) continue;
+          next = { status: 'timeout', message: t('contentGenerator.tiktokStatusUnreachable') };
+        }
+      }
+      if (tiktokPollRef.current !== run) return;
+      if (next.status === 'processing') {
+        if (Date.now() < deadline) {
+          setTikTokResult({ status: 'processing', publish_id: publishId, message: next.message });
+          continue;
+        }
+        next = { status: 'timeout', message: t('contentGenerator.tiktokStillProcessing') };
+      }
+      tiktokPollRef.current = null;
+      setTikTokResult({ status: next.status, publish_id: publishId, message: next.message });
+      if (next.status === 'success') {
+        toast.success(next.message || t('contentGenerator.publishSuccess', { platforms: 'TikTok' }));
+      } else if (next.status === 'timeout') {
+        toast(next.message, { icon: '⏳', duration: 8000 });
+      } else {
+        toast.error(t('contentGenerator.platformError', { platform: 'TikTok', message: next.message }), { duration: 8000 });
+      }
+      return;
+    }
+  };
+
+  // Coming back to this page while a TikTok post was processing: keep following it.
+  useEffect(() => {
+    const tk = draft.publishResults?.tiktok;
+    if (tk?.status === 'processing' && tk.publish_id) pollTikTok(tk.publish_id);
+    return () => {
+      tiktokPollRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A failed /content/publish call, as a message a person can act on.
+  const publishErrorMessage = (err) => {
+    const status = err.response?.status;
+    // Our own request timeout, or a proxy giving up (Cloudflare tunnels answer
+    // 524 after 100s): the server may still be publishing.
+    if (err.code === 'ECONNABORTED' || [502, 504, 524].includes(status)) {
+      return t('contentGenerator.publishTimeout');
+    }
+    if (!err.response && err.code === 'ERR_NETWORK') {
+      return t('contentGenerator.publishConnectionLost');
+    }
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string' && detail) return detail; // proxies may answer with an HTML page
+    return err.message || t('contentGenerator.publishFailed');
+  };
+
   const handlePublish = async () => {
-    if (!content) return;
+    if (!content || publishLockRef.current) return;
     const toPublish = selectedPlatforms.filter((p) => connectedPlatforms.includes(p));
     if (toPublish.length === 0) {
       toast.error(t('contentGenerator.selectedConnected'));
       return;
     }
     if (!ensureToken()) return;
+    publishLockRef.current = true;
+    tiktokPollRef.current = null; // stop following an earlier TikTok post
     setPublishing(true);
+    setPendingPlatforms(toPublish);
     setPublishResults({});
     try {
       const formData = new FormData();
@@ -348,30 +454,41 @@ function ContentGenerator({ accounts }) {
       if (mediaFile) {
         formData.append('media', mediaFile);
       }
+      // TikTok answers within seconds now (it finishes in the background), but
+      // an Instagram Reel can legitimately take ~10 minutes, hence 20.
       const { data } = await api.post('/content/publish', formData, {
-        timeout: 300000,
+        timeout: 1200000,
       });
       if (data.results) {
         setPublishResults(data.results);
-        const ok = Object.entries(data.results).filter(([, r]) => r.status === 'success');
-        const fail = Object.entries(data.results).filter(([, r]) => r.status !== 'success');
-        if (ok.length > 0) toast.success(t('contentGenerator.publishSuccess', { platforms: ok.map(([p]) => p).join(', ') }));
+        const entries = Object.entries(data.results);
+        const ok = entries.filter(([, r]) => r.status === 'success');
+        const fail = entries.filter(([, r]) => r.status !== 'success' && r.status !== 'processing');
+        if (ok.length > 0) toast.success(t('contentGenerator.publishSuccess', { platforms: ok.map(([p]) => platformName(p)).join(', ') }));
         fail.forEach(([p, r]) => {
           const reason = r && r.message ? r.message : (r ? JSON.stringify(r) : 'Unknown error');
-          toast.error(t('contentGenerator.platformError', { platform: p, message: reason }));
+          toast.error(t('contentGenerator.platformError', { platform: platformName(p), message: reason }));
         });
+        const tk = data.results.tiktok;
+        if (tk?.status === 'processing' && tk.publish_id) {
+          toast(t('contentGenerator.tiktokProcessingToast'), { icon: '⏳', duration: 6000 });
+          pollTikTok(tk.publish_id);
+        }
       }
     } catch (err) {
-      const detail = err.response?.data?.detail || (err.code === 'ECONNABORTED'
-        ? t('contentGenerator.publishTimeout')
-        : t('contentGenerator.publishFailed'));
-      toast.error(detail);
+      toast.error(publishErrorMessage(err), { duration: 8000 });
     } finally {
+      publishLockRef.current = false;
       setPublishing(false);
+      setPendingPlatforms([]);
     }
   };
 
   const connectedCount = selectedPlatforms.filter((p) => connectedPlatforms.includes(p)).length;
+  // Warn before publishing: a TikTok post without a video fails on the backend.
+  const tiktokNeedsVideo = selectedPlatforms.includes('tiktok') && mediaType !== 'video';
+  // TikTok accepted the post and is still finishing it: publishing again would duplicate it.
+  const tiktokProcessing = publishResults.tiktok?.status === 'processing';
 
   const trendingCompetitors = strategyData?.trending_competitors || [];
   const groupedByPlatform = ['linkedin', 'instagram', 'facebook'].map((p) => ({
@@ -386,8 +503,11 @@ function ContentGenerator({ accounts }) {
 
   return (
     <div className="content-generator">
-      <div className="content-gen-head">
-        <h3>{t('contentGenerator.title')}</h3>
+      <header className="studio-head">
+        <div>
+          <h1 className="studio-head__title">{t('contentGenerator.title')}</h1>
+          <p className="studio-head__sub">{t('dashboard.contentStudioSub')}</p>
+        </div>
         <button
           className="clear-btn"
           onClick={handleClearAll}
@@ -396,65 +516,81 @@ function ContentGenerator({ accounts }) {
         >
           {t('contentGenerator.clearAll')}
         </button>
-      </div>
+      </header>
 
-      <div className="gen-form">
-        <div className="form-group">
-          <label>{t('contentGenerator.topicLabel')}</label>
+      <div className="studio-stack">
+        <section className="studio-card gen-form">
+          <h3 className="studio-card__title">{t('contentGenerator.createHeading')}</h3>
+          <p className="studio-card__hint">{t('contentGenerator.createSubheading')}</p>
           <textarea
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t('contentGenerator.topicPlaceholder')}
-            rows={3}
+            rows={4}
             disabled={loading}
           />
-        </div>
+        </section>
 
-        <div className="form-row">
-          <div className="form-group">
-            <label>{t('contentGenerator.toneLabel')}</label>
-            <div className="tone-selector">
+        <div className="studio-options-grid">
+          <section className="studio-card gen-form">
+            <h3 className="studio-card__title">{t('contentGenerator.toneLabel')}</h3>
+            <p className="studio-card__hint">{t('contentGenerator.toneSubheading')}</p>
+            <div className="tone-selector" role="radiogroup" aria-label={t('contentGenerator.toneLabel')}>
               {TONES.map((tt) => (
                 <button
                   key={tt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={tone === tt.value}
                   className={`tone-btn ${tone === tt.value ? 'active' : ''}`}
                   onClick={() => setTone(tt.value)}
                   disabled={loading}
                 >
-                  <span className="tone-icon">{tt.icon}</span>
-                  <span className="tone-label">{t('contentGenerator.tone' + tt.value.charAt(0).toUpperCase() + tt.value.slice(1))}</span>
+                  {t('contentGenerator.tone' + tt.value.charAt(0).toUpperCase() + tt.value.slice(1))}
                 </button>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="form-group">
-            <label>{t('contentGenerator.platformsLabel')}</label>
+          <section className="studio-card gen-form">
+            <h3 className="studio-card__title">{t('contentGenerator.platformsLabel')}</h3>
+            <p className="studio-card__hint">{t('contentGenerator.platformsSubheading')}</p>
             <div className="platform-selector">
-              {PLATFORMS.map((p) => (
-                <button
-                  key={p.value}
-                  className={`platform-btn ${selectedPlatforms.includes(p.value) ? 'active' : ''} ${connectedPlatforms.includes(p.value) ? 'connected' : ''}`}
-                  onClick={() => togglePlatform(p.value)}
-                  disabled={loading}
-                  style={selectedPlatforms.includes(p.value) ? { borderColor: p.color, background: `${p.color}15` } : {}}
-                >
-                  <span className="platform-btn-icon" style={{ background: p.color }}>{p.icon}</span>
-                  <span>{p.label}</span>
-                  {connectedPlatforms.includes(p.value) && <span className="connected-dot" />}
-                </button>
-              ))}
+              {PLATFORMS.map((p) => {
+                const on = selectedPlatforms.includes(p.value);
+                const linked = connectedPlatforms.includes(p.value);
+                return (
+                  <button
+                    key={p.value}
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    className={`platform-btn ${on ? 'active' : ''}`}
+                    onClick={() => togglePlatform(p.value)}
+                    disabled={loading}
+                  >
+                    <span className="platform-btn-icon" style={{ background: p.color }}>{p.icon}</span>
+                    <span className="platform-btn-text">
+                      <span className="platform-btn-name">{p.label}</span>
+                      <span className="platform-btn-state">{linked ? (t('dashboard.connectedStatus') || 'Connected') : (t('dashboard.awaitingConnection') || 'Not connected')}</span>
+                    </span>
+                    <span className="m-switch" aria-hidden="true" data-on={on} />
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </section>
         </div>
 
-        <button className={"btn btn-generate " + PREMIUM_BTN} onClick={handleGenerate} disabled={loading || !topic.trim()}>
-          {loading ? (
-            <><span className="spinner-sm" /> {t('contentGenerator.generating')}</>
-          ) : (
-            t('contentGenerator.generateBtn')
-          )}
-        </button>
+        <div className="studio-actions">
+          <button className="m-btn m-btn--primary studio-generate-btn" onClick={handleGenerate} disabled={loading || !topic.trim()}>
+            {loading ? (
+              <><span className="spinner-sm" /> {t('contentGenerator.generating')}</>
+            ) : (
+              t('contentGenerator.generateBtn')
+            )}
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -479,7 +615,7 @@ function ContentGenerator({ accounts }) {
 
           <div className="competitor-section">
             <div className="competitor-section-header">
-              <h5 className="competitor-section-title">{t('contentGenerator.eliteAnalysisTitle')}</h5>
+              <div className="studio-section-heading competitor-heading"><div><h4 className="competitor-section-title">{t('contentGenerator.eliteAnalysisTitle')}</h4><p>{t('contentGenerator.eliteHint')}</p></div></div>
               <button
                 className={"btn " + PREMIUM_BTN}
                 onClick={handleCompetitiveAnalysis}
@@ -492,10 +628,6 @@ function ContentGenerator({ accounts }) {
                 )}
               </button>
             </div>
-            <p className="competitor-section-hint">
-              {t('contentGenerator.eliteHint')}
-            </p>
-
             {competitorError && <div className="competitor-error">{competitorError}</div>}
 
             {strategyData && (
@@ -511,7 +643,6 @@ function ContentGenerator({ accounts }) {
 
                 <section className="strategy-section">
                   <div className="strategy-section-head">
-                    <span className="strategy-section-icon">🔥</span>
                     <div>
                       <h5>{t('contentGenerator.trendingCompetitors')}</h5>
                       <p>{t('contentGenerator.trendingCompetitorsSub')}</p>
@@ -554,7 +685,6 @@ function ContentGenerator({ accounts }) {
 
                 <section className="strategy-section">
                   <div className="strategy-section-head">
-                    <span className="strategy-section-icon">🎯</span>
                     <div>
                       <h5>{t('contentGenerator.yourTeardown')}</h5>
                       <p>{t('contentGenerator.yourTeardownSub')}</p>
@@ -586,7 +716,6 @@ function ContentGenerator({ accounts }) {
 
                 <section className="strategy-section">
                   <div className="strategy-section-head">
-                    <span className="strategy-section-icon">💣</span>
                     <div>
                       <h5>{t('contentGenerator.weaknessesTitle')}</h5>
                       <p>{t('contentGenerator.weaknessesSub')}</p>
@@ -615,7 +744,6 @@ function ContentGenerator({ accounts }) {
 
                 <section className="strategy-section">
                   <div className="strategy-section-head">
-                    <span className="strategy-section-icon">🗺️</span>
                     <div>
                       <h5>{t('contentGenerator.roadmapTitle')}</h5>
                       <p>{t('contentGenerator.roadmapSub')}</p>
@@ -644,8 +772,8 @@ function ContentGenerator({ accounts }) {
             )}
           </div>
 
-          <div className="ai-image-section">
-            <h5 className="ai-image-title">{t('contentGenerator.aiImageTitle')}</h5>
+          <div className="ai-image-section studio-tool-section">
+            <div className="studio-section-heading"><div><h4>{t('contentGenerator.aiImageTitle')}</h4><p>{t('contentGenerator.imagePromptPlaceholder')}</p></div></div>
             <textarea
               className="ai-image-prompt"
               value={imagePrompt}
@@ -663,7 +791,7 @@ function ContentGenerator({ accounts }) {
                 {imageGenerating && imageMode === 'pro' ? (
                   <><span className="spinner-sm" /> {t('contentGenerator.generatingImage')}</>
                 ) : (
-                  <><span className="ai-icon">✦</span> {t('contentGenerator.proGenerator')}</>
+                  t('contentGenerator.proGenerator')
                 )}
               </button>
               <button
@@ -674,7 +802,7 @@ function ContentGenerator({ accounts }) {
                 {imageGenerating && imageMode === 'free' ? (
                   <><span className="spinner-sm" /> {t('contentGenerator.generatingImage')}</>
                 ) : (
-                  <><span className="ai-icon">∞</span> {t('contentGenerator.freeGenerator')}</>
+                  t('contentGenerator.freeGenerator')
                 )}
               </button>
             </div>
@@ -697,8 +825,8 @@ function ContentGenerator({ accounts }) {
             )}
           </div>
 
-          <div className="media-upload-section">
-            <label>{t('contentGenerator.attachMedia')}</label>
+          <div className="media-upload-section studio-tool-section">
+            <div className="studio-section-heading"><div><h4>{t('contentGenerator.attachMedia')}</h4><p>{t('contentGenerator.browseFiles')}</p></div></div>
             <input
               ref={fileInputRef}
               type="file"
@@ -719,7 +847,13 @@ function ContentGenerator({ accounts }) {
             {mediaFile && (
               <div className="media-preview">
                 {mediaType === 'image' && mediaPreview && (
-                  <img src={mediaPreview} alt={t('scheduler.previewAlt')} decoding="async" className="media-preview-img" />
+                  <img
+                    src={mediaPreview}
+                    alt={t('scheduler.previewAlt')}
+                    decoding="async"
+                    className="media-preview-img"
+                    onError={(e) => console.error('Image load failed:', e.target.src)}
+                  />
                 )}
                 {mediaType === 'video' && mediaPreview && (
                   <video src={mediaPreview} controls className="media-preview-video" />
@@ -741,38 +875,63 @@ function ContentGenerator({ accounts }) {
                 const isSelected = selectedPlatforms.includes(p.value);
                 const isConnected = connectedPlatforms.includes(p.value);
                 const result = publishResults[p.value];
+                const inProgress = (publishing && pendingPlatforms.includes(p.value)) || result?.status === 'processing';
                 return (
                   <label key={p.value} className={`publish-platform-chip ${isSelected ? 'selected' : ''} ${isConnected ? 'connected' : 'disconnected'}`}>
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => togglePlatform(p.value)}
-                      disabled={publishing}
+                      disabled={publishing || tiktokProcessing}
                     />
                     <span className="chip-icon" style={{ background: p.color }}>{p.icon}</span>
                     <span className="chip-label">{p.label}</span>
-                    {result && (
-                      <span className={`chip-result ${result.status === 'success' ? 'ok' : 'fail'}`}>
-                        {result.status === 'success' ? '✓' : '✗'}
+                    {inProgress ? (
+                      <span className="spinner-sm" role="img" aria-label={t('contentGenerator.publishing')} />
+                    ) : result && (
+                      <span className={`chip-result ${result.status === 'success' ? 'ok' : result.status === 'timeout' ? 'pending' : 'fail'}`}>
+                        {result.status === 'success' ? '✓' : result.status === 'timeout' ? '?' : '✗'}
                       </span>
                     )}
                   </label>
                 );
               })}
             </div>
+            {tiktokNeedsVideo && (
+              <p className="publish-hint">{t('contentGenerator.tiktokNeedsVideo')}</p>
+            )}
+            {/* Failures stay visible (toasts fade) with the platform's exact error.
+                A TikTok post still processing shows its progress here too. */}
+            {Object.entries(publishResults)
+              .filter(([, r]) => r && r.status !== 'success')
+              .map(([p, r]) => {
+                const waiting = r.status === 'processing' || r.status === 'timeout';
+                return (
+                  <div key={p} className={`publish-result ${r.status}`} role={waiting ? 'status' : 'alert'}>
+                    <strong>{platformName(p)}:</strong> {r.message || (waiting ? t('contentGenerator.publishing') : 'Publishing failed.')}
+                  </div>
+                );
+              })}
           </div>
 
           <div className="publish-actions">
-            <span className="publish-info">
-              {t('contentGenerator.publishInfo', { connected: connectedCount, total: selectedPlatforms.length })}
+            <span className="publish-info" aria-live="polite">
+              {publishing
+                ? t('contentGenerator.publishingTo', { platforms: pendingPlatforms.map(platformName).join(', ') })
+                : tiktokProcessing
+                  ? t('contentGenerator.tiktokProcessingInfo')
+                  : t('contentGenerator.publishInfo', { connected: connectedCount, total: selectedPlatforms.length })}
             </span>
             <button
               className={"btn " + PREMIUM_BTN}
               onClick={handlePublish}
-              disabled={publishing || connectedCount === 0}
+              disabled={publishing || tiktokProcessing || connectedCount === 0}
+              aria-busy={publishing || tiktokProcessing}
             >
               {publishing ? (
                 <><span className="spinner-sm" /> {t('contentGenerator.publishing')}</>
+              ) : tiktokProcessing ? (
+                <><span className="spinner-sm" /> {t('contentGenerator.tiktokProcessingBtn')}</>
               ) : (
                 t('contentGenerator.publishBtn')
               )}
