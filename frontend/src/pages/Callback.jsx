@@ -41,15 +41,15 @@ function Callback() {
     // the code, saves the account, and issues a 302 RedirectResponse back to
     // /dashboard?connection_success=... which the browser follows directly —
     // so the address bar lands on the Dashboard with the result params. The
-    // JWT is passed as a query param because a top-level navigation can't carry
-    // an Authorization header.
     const base = import.meta.env.VITE_API_BASE_URL || '/api';
-    const token = localStorage.getItem('brandora_token') || '';
+    // The backend resolves the owner from single-use OAuth state, so no session
+    // credential is included in the callback URL.
+    const state = params.get('state') || '';
     const callbackUrl =
       `${base}/social/callback/${platform}` +
       `?code=${encodeURIComponent(code)}` +
-      `&access_token=${encodeURIComponent(token)}`;
-    console.log(`[CALLBACK] Navigating to backend: ${callbackUrl}`);
+      `&state=${encodeURIComponent(state)}`;
+    console.log(`[CALLBACK] Navigating to backend callback for ${platform}`);
     window.location.href = callbackUrl;
   }, [platform, navigate, t]);
 

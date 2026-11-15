@@ -33,6 +33,9 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "tailwindcss": "^4.3.3",
-    "vite": "^5.4.6"
+    "vite": "^6.4.6"
+  },
+  "overrides": {
+    "postcss-selector-parser": "^6.1.5"
   }
 }

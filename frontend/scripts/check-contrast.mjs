@@ -29,7 +29,8 @@ for (const k of ['accent', 'accent-2', 'success', 'warning', 'danger']) {
   t[`${k}-soft`] = mix(t[k], t.surface, 0.12);
   if (k !== 'accent') t[`${k}-text`] = mix(t[k], t.text, 0.5);
 }
-t['sidebar-active'] = mix(t['sidebar-accent'], t.sidebar, 0.14);
+t['sidebar-hover'] = mix('#FFFFFF', t.sidebar, 0.08);
+t['sidebar-active'] = mix(t['sidebar-accent'], t.sidebar, 0.18);
 for (const p of ['instagram', 'facebook', 'linkedin', 'tiktok']) t[`tile-${p}`] = mix(t[`platform-${p}`], t.surface, 0.14);
 
 const GROUPS = {

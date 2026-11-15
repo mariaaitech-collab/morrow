@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Bot, Building2, CalendarClock, CalendarDays, ChevronRight, CreditCard, History, LayoutDashboard,
@@ -18,6 +18,7 @@ import './WorkspaceShell.css';
  */
 export default function WorkspaceShell({ user, onLogout, children, active, legacy = false }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sidebarRef = useRef(null);
   // Desktop: full sidebar (labels) or slim icon rail. Remembered; tablets start collapsed.
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -61,9 +62,38 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
 
   useEffect(() => {
     if (!mobileOpen) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setMobileOpen(false); };
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusable = () => [...(sidebarRef.current?.querySelectorAll(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) || [])].filter((el) => el.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !sidebarRef.current?.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !sidebarRef.current?.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
   }, [mobileOpen]);
 
   const displayName = (user?.username || '').split('@')[0] || t('nav.workspaceUser');
@@ -77,7 +107,14 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
 
         {/* The scrim comes first so the drawer (same layer) paints above it. */}
         {mobileOpen && <button type="button" className="m-scrim" aria-label={t('nav.closeNavigation')} onClick={close} />}
-        <aside className={`m-sidebar ${mobileOpen ? 'is-open' : ''}`} aria-label={t('nav.mainNavigation')}>
+        <aside
+          id="workspace-navigation"
+          ref={sidebarRef}
+          className={`m-sidebar ${mobileOpen ? 'is-open' : ''}`}
+          aria-label={t('nav.mainNavigation')}
+          role={mobileOpen ? 'dialog' : undefined}
+          aria-modal={mobileOpen ? 'true' : undefined}
+        >
           <div className="m-sidebar__head">
             <Link to="/dashboard" className="m-sidebar__brand" onClick={close} aria-label="Morrow">
               <Logo size={36} tagline />
@@ -129,7 +166,8 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
               className="m-topbar__menu"
               icon={collapsed ? PanelLeftOpen : PanelLeftClose}
               label={collapsed ? t('nav.openNavigation') : t('nav.closeNavigation')}
-              aria-expanded={!collapsed}
+              aria-expanded={window.matchMedia('(max-width: 767px)').matches ? mobileOpen : !collapsed}
+              aria-controls="workspace-navigation"
               onClick={toggleSidebar}
             />
             <nav className="m-breadcrumb" aria-label={t('nav.breadcrumb')}>
