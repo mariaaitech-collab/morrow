@@ -110,66 +110,20 @@ async def admin_activate_user(
 
 @router.post("/subscribe")
 async def subscribe(user: dict = Depends(get_current_user), plan: str = "pro"):
-    """Simulate a successful $29/mo checkout and upgrade the account to Pro.
-
-    Real integration: verify the payment intent / webhook here, then apply the
-    same document update below.
-    """
-    if plan not in ("pro",):
-        raise HTTPException(status_code=400, detail="Unsupported plan.")
-
-    now = utc_now()
-    updated = await _set_plan(user["id"], {
-        "subscribed": True,
-        "plan": "pro",
-        "subscription_ends_at": now + timedelta(days=30),
-        "trial_ends_at": now + timedelta(days=TRIAL_DAYS),  # keep trial clock full
-    }, now)
-    return {**compute_subscription(updated), "message": "Welcome to Morrow Pro!"}
+    """Keep the legacy route, but never grant a paid plan without verification."""
+    raise HTTPException(
+        status_code=501,
+        detail="Automated checkout is not configured. Contact the administrator for manual activation.",
+    )
 
 
 @router.post("/success")
 async def payment_success(payload: PaymentSuccessRequest, user: dict = Depends(get_current_user)):
-    """Handle a successful paid checkout and grant the plan's token allotment.
-
-    When a payment for the Standard plan succeeds, the user's token balance is
-    increased by 50 and their plan becomes 'standard'. For Premium it is
-    increased by 150 and their plan becomes 'premium'. The endpoint returns the
-    updated token balance so the React Navbar counter refreshes immediately
-    without a page reload.
-    """
-    plan = (payload.plan or "").strip().lower()
-    if plan not in PLAN_CONFIG:
-        raise HTTPException(status_code=400, detail="Unsupported plan. Use 'standard' or 'premium'.")
-
-    cfg = PLAN_CONFIG[plan]
-    now = utc_now()
-
-    # Grant the one-time token allotment and upgrade the plan. Tokens are
-    # additive so a re-purchase / renewal stacks on any remaining balance,
-    # but an existing finite balance is never silently reset to the new plan's
-    # allotment (prevents refund-and-rebuy token farming beyond the buying cap).
-    updated = await _set_plan(user["id"], {
-        "subscribed": True,
-        "plan": plan,
-        "subscription_ends_at": now + timedelta(days=cfg["days"]),
-        "trial_ends_at": now + timedelta(days=cfg["days"]),
-    }, now, add_tokens=cfg["tokens"])
-    tokens_left = int(updated.get("free_tokens", 0))
-    sub = compute_subscription(updated)
-
-    return {
-        "message": f"Payment confirmed. {cfg['tokens']} tokens added to your {plan.capitalize()} plan.",
-        "plan": sub["plan"],
-        "subscribed": sub["subscribed"],
-        "is_pro": sub["is_pro"],
-        "is_trialing": sub["is_trialing"],
-        "is_unlimited": sub["is_unlimited"],
-        "access_active": sub["access_active"],
-        "tokens_added": cfg["tokens"],
-        "free_tokens": tokens_left,
-        "subscription_ends_at": sub["subscription_ends_at"],
-    }
+    """Retain the old callback path without trusting client-declared payment."""
+    raise HTTPException(
+        status_code=501,
+        detail="Payment verification is not configured. Contact the administrator for manual activation.",
+    )
 
 
 @router.post("/cancel")

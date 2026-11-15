@@ -663,6 +663,8 @@ async def _upload_to_local(file_bytes: bytes, filename: str, media_type: str = "
             raise HTTPException(status_code=400, detail=str(e))
     elif os.path.splitext(filename)[1].lower() not in media_rules.VIDEO_EXTS:
         raise HTTPException(status_code=400, detail="Unsupported video format. Use MP4 or MOV.")
+    elif not media_rules.has_valid_video_signature(filename, file_bytes):
+        raise HTTPException(status_code=400, detail="The file contents do not match a supported video format.")
 
     try:
         save_path.parent.mkdir(parents=True, exist_ok=True)

@@ -18,8 +18,8 @@ from db import ScheduledPost, SessionLocal
 import firebase_db
 from firebase_db import FieldFilter
 import limits
-from config import utc_now
-from usage import get_optional_user, record_usage
+from config import ADMIN_EMAIL, utc_now
+from usage import record_usage
 from deps import get_current_user, require_subscription, require_token, deduct_token
 from routers.content import (
     _boosted_ai_prompt,
@@ -268,17 +268,21 @@ async def create_scheduled_post(
 
 
 @router.get("/schedule")
-async def list_scheduled_posts(request: Request):
-    """Return scheduled posts ordered by time. Scoped to the logged-in user
-    when authenticated (the publish engine still tags every post with its
-    owner, so multi-tenant safety is preserved)."""
-    user = await get_optional_user(request)
+async def list_scheduled_posts(user: dict = Depends(get_current_user)):
+    """Return the logged-in user's scheduled posts, ordered by time.
+
+    Auth is required and the query is always scoped to the caller: an
+    unauthenticated request used to receive EVERY user's posts (broken
+    access control), which this closed.
+    """
     session = _get_session()
     try:
-        q = session.query(ScheduledPost)
-        if user:
-            q = q.filter(ScheduledPost.created_by == user.get("email"))
-        rows = q.order_by(ScheduledPost.scheduled_at.asc()).all()
+        rows = (
+            session.query(ScheduledPost)
+            .filter(ScheduledPost.created_by == user.get("email"))
+            .order_by(ScheduledPost.scheduled_at.asc())
+            .all()
+        )
         return [_serialize(r) for r in rows]
     finally:
         session.close()
@@ -675,12 +679,19 @@ async def delete_note(note_id: str, user: dict = Depends(require_subscription)):
 
 
 @router.delete("/schedule/{post_id}")
-def delete_scheduled_post(post_id: int):
-    """Remove a pending or failed scheduled post."""
+def delete_scheduled_post(post_id: int, user: dict = Depends(get_current_user)):
+    """Remove one of the CALLER'S pending or failed scheduled posts.
+
+    This endpoint used to require no authentication at all, so anyone who
+    could reach the API could delete anybody's scheduled posts. It now
+    requires login and ownership (the admin may remove any post). An alien
+    post answers 404, not 403, so ids can't be probed.
+    """
+    is_admin = (user.get("email") or "").lower() == ADMIN_EMAIL or bool(user.get("is_admin"))
     session = _get_session()
     try:
         post = session.get(ScheduledPost, post_id)
-        if not post:
+        if not post or (post.created_by != user.get("email") and not is_admin):
             raise HTTPException(status_code=404, detail="Scheduled post not found")
         if post.status not in ("pending", "failed"):
             raise HTTPException(status_code=400, detail="Only pending or failed posts can be removed")

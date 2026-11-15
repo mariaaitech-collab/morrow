@@ -5,6 +5,7 @@ from typing import List
 import httpx
 import json
 import os
+import secrets
 from urllib.parse import urlencode
 from models import SocialAccount
 from deps import get_current_user
@@ -15,7 +16,7 @@ from config import (
     INSTAGRAM_CLIENT_ID, INSTAGRAM_CLIENT_SECRET, INSTAGRAM_REDIRECT_URI,
     TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REDIRECT_URI,
     ADMIN_EMAIL, FRONTEND_URL, META_ENGAGEMENT_SCOPES,
-    GRAPH_BASE, FB_OAUTH_DIALOG,
+    GRAPH_BASE, FB_OAUTH_DIALOG, API_BASE_URL,
 )
 from tiktok_client import TikTokError, tiktok
 
@@ -203,6 +204,20 @@ async def connect_platform(
     auth_url = config["auth_url_template"].format(
         client_id=config["client_id"],
         redirect_uri=config["redirect_uri"],
+    )
+    # Bind the OAuth response to this user with a short-lived, single-use
+    # state value. Keep the session JWT out of provider URLs and browser history.
+    from routers.auth import create_oauth_state
+    state = await create_oauth_state(user, platform)
+    auth_url += "&" + urlencode({"state": state})
+    response.set_cookie(
+        key=f"social_oauth_state_{platform}",
+        value=state,
+        max_age=600,
+        path=f"/api/social/callback/{platform}",
+        secure=API_BASE_URL.lower().startswith("https://"),
+        httponly=True,
+        samesite="lax",
     )
     return {"platform": platform, "auth_url": auth_url, "status": "ready"}
 
@@ -394,15 +409,24 @@ async def auth_callback(
     request: Request,
     platform: str,
     code: str = "",
-    access_token: str = "",
+    state: str = "",
 ):
     print(f"[SOCIAL] Callback for {platform}, code={'YES' if code else 'NO'}")
 
     def fail(error: str):
-        return RedirectResponse(
+        response = RedirectResponse(
             _dashboard_url(**{"connection_success": "false", "platform": platform, "error": error}),
             status_code=302,
         )
+        if platform in PLATFORM_CONFIGS:
+            response.delete_cookie(
+                key=f"social_oauth_state_{platform}",
+                path=f"/api/social/callback/{platform}",
+                secure=API_BASE_URL.lower().startswith("https://"),
+                httponly=True,
+                samesite="lax",
+            )
+        return response
 
     if platform not in PLATFORM_CONFIGS:
         return fail("unsupported_platform")
@@ -410,8 +434,19 @@ async def auth_callback(
     if not code:
         return fail("no_code")
 
+    cookie_state = request.cookies.get(f"social_oauth_state_{platform}", "")
+    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        return fail("invalid_state")
+
+    from routers.auth import consume_oauth_state
+    state_doc = await consume_oauth_state(state, platform)
+    if not state_doc:
+        return fail("invalid_state")
+
     try:
-        user = await _resolve_callback_user(request, access_token)
+        user = await firebase_db.get_by_id(firebase_db.users, state_doc.get("user_id"))
+        if not user:
+            return fail("account_unavailable")
         user_token = await _exchange_code_for_token(platform, code)
         print(f"[SOCIAL] Got user token for {platform}")
 
@@ -515,10 +550,18 @@ async def auth_callback(
         _save_accounts()
         print(f"[SOCIAL] Saved {platform} account with page_id={page_id}, ig_id={ig_business_id}")
 
-        return RedirectResponse(
+        response = RedirectResponse(
             _dashboard_url(**{"connection_success": "true", "platform": platform}),
             status_code=302,
         )
+        response.delete_cookie(
+            key=f"social_oauth_state_{platform}",
+            path=f"/api/social/callback/{platform}",
+            secure=API_BASE_URL.lower().startswith("https://"),
+            httponly=True,
+            samesite="lax",
+        )
+        return response
 
     except HTTPException as e:
         print(f"[SOCIAL] Auth error for {platform}: {e.detail}")

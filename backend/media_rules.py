@@ -43,6 +43,18 @@ LIMITS = {
 VIDEO_MIME = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm",
               ".avi": "video/x-msvideo", ".mkv": "video/x-matroska"}
 
+
+def has_valid_video_signature(filename: str, data: bytes) -> bool:
+    """Check the container signature instead of trusting the submitted MIME type."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    if ext in (".mp4", ".m4v", ".mov"):
+        return len(data) >= 12 and data[4:8] == b"ftyp"
+    if ext == ".avi":
+        return len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"AVI "
+    if ext in (".webm", ".mkv"):
+        return data.startswith(b"\x1a\x45\xdf\xa3")
+    return False
+
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BACKEND_DIR, "static", "uploads")
 

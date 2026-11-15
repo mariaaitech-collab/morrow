@@ -13,6 +13,7 @@ history exclusively tracks SaaS usage.
 """
 import traceback
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -21,7 +22,7 @@ from jose import jwt
 import firebase_db
 from config import SECRET_KEY, ALGORITHM, TOKEN_EXPIRE_DAYS, utc_now, RESET_TOKEN_MINUTES, ADMIN_EMAIL
 from models import UserCreate, UserLogin, TokenResponse, ForgotPasswordRequest, ResetPasswordRequest
-from security import pwd_context, verify_password, login_rate_limit, forgot_rate_limit
+from security import pwd_context, verify_password, login_rate_limit, forgot_rate_limit, reset_rate_limit, signup_rate_limit
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -68,7 +69,7 @@ def _public(user: dict) -> dict:
 
 @router.post("/signup", response_model=TokenResponse)
 @router.post("/register", response_model=TokenResponse)
-async def register(user: UserCreate):
+async def register(user: UserCreate, _: None = Depends(signup_rate_limit)):
     email = user.email.strip().lower()
     username = user.username.strip()
     if not email or not username:
@@ -196,7 +197,7 @@ EMAIL_ENABLED = bool(SMTP_HOST and SMTP_USER and SMTP_PASS)
 # In local/dev (FRONTEND_URL points at localhost) we surface the reset link in
 # the API response so the flow works without a configured mail server. This is
 # never exposed in production (real domains).
-DEV_MODE = "localhost" in FRONTEND_URL
+DEV_MODE = urlparse(FRONTEND_URL).hostname in ("localhost", "127.0.0.1", "::1")
 
 
 def _hash_token(token: str) -> str:
@@ -338,7 +339,7 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request, _: None
 
 
 @router.post("/reset-password")
-async def reset_password(body: ResetPasswordRequest):
+async def reset_password(body: ResetPasswordRequest, _: None = Depends(reset_rate_limit)):
     # 1. Extract inputs
     token = (body.token or "").strip()
     new_password = body.new_password or ""
@@ -458,11 +459,29 @@ async def create_tiktok_authorization(user: dict, response: Response) -> dict:
     return {"platform": "tiktok", "auth_url": auth_url, "status": "ready", "pkce": "S256"}
 
 
-async def _consume_tiktok_state(nonce: str):
+async def create_oauth_state(user: dict, provider: str) -> str:
+    """Mint a single-use CSRF `state` nonce for an OAuth connect flow.
+
+    Stored server-side (10-minute TTL) and bound to the connecting user, so the
+    callback can both verify the flow started here and know who it belongs to
+    without any credential travelling in the redirect URL.
+    """
+    nonce = secrets.token_urlsafe(32)
+    now = utc_now()
+    await firebase_db.oauth_states.document(nonce).create({
+        "provider": provider,
+        "user_id": user["id"],
+        "created_at": now,
+        "expires_at": now + timedelta(seconds=OAUTH_STATE_TTL_SECONDS),
+    })
+    return nonce
+
+
+async def consume_oauth_state(nonce: str, provider: str):
     """Atomically pop a state document. Returns None when unknown/expired/replayed."""
     if not nonce or len(nonce) > 128 or not firebase_db.valid_id(nonce):
         return None
-    doc = await _pop_state(firebase_db.db.transaction(), firebase_db.oauth_states.document(nonce), "tiktok")
+    doc = await _pop_state(firebase_db.db.transaction(), firebase_db.oauth_states.document(nonce), provider)
     if not doc:
         return None
     expires_at = doc.get("expires_at")
@@ -472,6 +491,10 @@ async def _consume_tiktok_state(nonce: str):
         if expires_at < utc_now():
             return None
     return doc
+
+
+async def _consume_tiktok_state(nonce: str):
+    return await consume_oauth_state(nonce, "tiktok")
 
 
 @firebase_db.async_transactional

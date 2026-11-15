@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 import db
 import firebase_db
 from config import CORS_ORIGINS, SECRET_KEY, META_POLLING_ENABLED, META_POLL_INTERVAL
+from security import BodySizeLimitMiddleware, GlobalRateLimitMiddleware, SecurityHeadersMiddleware
 from routers import auth, content, schedule, social, strategy, user, billing, responder, webhooks
 from routers.schedule import scan_due_posts
 
@@ -91,6 +92,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Protection layers (outermost first as executed): flood guard -> body cap ->
+# security headers -> CORS. CORS is added last so it runs innermost and its
+# headers reach real responses; the strict origin list comes from config.
+app.add_middleware(GlobalRateLimitMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(CORS_ORIGINS),

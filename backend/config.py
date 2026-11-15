@@ -21,7 +21,18 @@ def _required_url(name: str) -> str:
 APP_BASE_URL = _required_url("APP_BASE_URL")
 API_BASE_URL = _required_url("API_BASE_URL")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "brandora-secret-key-change-in-production")
+_DEFAULT_SECRET = "brandora-secret-key-change-in-production"
+SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
+# A publicly known signing key lets anyone forge a session for any account.
+SECRET_KEY_IS_DEFAULT = SECRET_KEY == _DEFAULT_SECRET
+if SECRET_KEY_IS_DEFAULT:
+    print(
+        "[SECURITY] CRITICAL: SECRET_KEY is the built-in default. Anyone who has "
+        "read the source can forge login tokens for ANY account. Set a long "
+        "random SECRET_KEY in backend/.env before exposing this server."
+    )
+    if urlparse(APP_BASE_URL).hostname not in ("localhost", "127.0.0.1", "::1"):
+        raise RuntimeError("Refusing to start with the built-in SECRET_KEY on a non-local APP_BASE_URL.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 TOKEN_EXPIRE_DAYS = 7
@@ -52,6 +63,8 @@ CORS_ORIGINS = tuple(
     for origin in (os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)).split(",")
     if origin.strip()
 )
+if "*" in CORS_ORIGINS:
+    raise RuntimeError("CORS_ORIGINS must list explicit origins when credentialed CORS is enabled.")
 
 # Administrator account that can manually approve Pro activations.
 # This is the ONLY account that may access the /admin panel and admin routes.
