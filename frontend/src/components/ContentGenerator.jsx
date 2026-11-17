@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaFacebookF, FaLinkedinIn, FaInstagram, FaTiktok } from 'react-icons/fa';
+import { ExternalLink } from 'lucide-react';
 import api from '../api/axios';
 import { ensureToken } from '../api/tokens';
 import CropModal from './CropModal';
@@ -250,6 +251,7 @@ function ContentGenerator({ accounts }) {
       const formData = new FormData();
       formData.append('topic', topic.trim());
       formData.append('tone', tone);
+      formData.append('platforms', JSON.stringify(selectedPlatforms));
       formData.append('language', languageName(language));
       const { data } = await api.post('/content/generate', formData, { timeout: 300000 });
       setContent(data);
@@ -518,23 +520,44 @@ function ContentGenerator({ accounts }) {
         </button>
       </header>
 
-      <div className="studio-stack">
-        <section className="studio-card gen-form">
-          <h3 className="studio-card__title">{t('contentGenerator.createHeading')}</h3>
-          <p className="studio-card__hint">{t('contentGenerator.createSubheading')}</p>
+      <form
+        className="studio-stack studio-composer"
+        onSubmit={(event) => { event.preventDefault(); handleGenerate(); }}
+      >
+        <section className="studio-composer__brief">
+          <div className="studio-step-heading">
+            <span className="studio-step-number">01</span>
+            <div>
+              <h3 className="studio-card__title">{t('contentGenerator.createHeading')}</h3>
+              <p className="studio-card__hint">{t('contentGenerator.createSubheading')}</p>
+            </div>
+          </div>
           <textarea
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder={t('contentGenerator.topicPlaceholder')}
             rows={4}
             disabled={loading}
+            aria-label={t('contentGenerator.createHeading')}
           />
+          <p className="studio-composer__keyboard-hint">Enter to generate <span>·</span> Shift + Enter for a new line</p>
         </section>
 
-        <div className="studio-options-grid">
-          <section className="studio-card gen-form">
-            <h3 className="studio-card__title">{t('contentGenerator.toneLabel')}</h3>
-            <p className="studio-card__hint">{t('contentGenerator.toneSubheading')}</p>
+        <div className="studio-options-grid studio-composer__options">
+          <section className="studio-composer__option">
+            <div className="studio-step-heading">
+              <span className="studio-step-number">02</span>
+              <div>
+                <h3 className="studio-card__title">{t('contentGenerator.toneLabel')}</h3>
+                <p className="studio-card__hint">{t('contentGenerator.toneSubheading')}</p>
+              </div>
+            </div>
             <div className="tone-selector" role="radiogroup" aria-label={t('contentGenerator.toneLabel')}>
               {TONES.map((tt) => (
                 <button
@@ -552,9 +575,14 @@ function ContentGenerator({ accounts }) {
             </div>
           </section>
 
-          <section className="studio-card gen-form">
-            <h3 className="studio-card__title">{t('contentGenerator.platformsLabel')}</h3>
-            <p className="studio-card__hint">{t('contentGenerator.platformsSubheading')}</p>
+          <section className="studio-composer__option">
+            <div className="studio-step-heading">
+              <span className="studio-step-number">03</span>
+              <div>
+                <h3 className="studio-card__title">{t('contentGenerator.platformsLabel')}</h3>
+                <p className="studio-card__hint">{t('contentGenerator.platformsSubheading')}</p>
+              </div>
+            </div>
             <div className="platform-selector">
               {PLATFORMS.map((p) => {
                 const on = selectedPlatforms.includes(p.value);
@@ -583,7 +611,8 @@ function ContentGenerator({ accounts }) {
         </div>
 
         <div className="studio-actions">
-          <button className="m-btn m-btn--primary studio-generate-btn" onClick={handleGenerate} disabled={loading || !topic.trim()}>
+          <span className="studio-composer__selected">{selectedPlatforms.length} platform{selectedPlatforms.length === 1 ? '' : 's'} selected</span>
+          <button type="submit" className="m-btn m-btn--primary studio-generate-btn" disabled={loading || !topic.trim()}>
             {loading ? (
               <><span className="spinner-sm" /> {t('contentGenerator.generating')}</>
             ) : (
@@ -591,7 +620,7 @@ function ContentGenerator({ accounts }) {
             )}
           </button>
         </div>
-      </div>
+      </form>
 
       {loading && (
         <div className="generating-indicator">
@@ -664,17 +693,21 @@ function ContentGenerator({ accounts }) {
                             <a
                               key={`${platform}-${i}`}
                               className="viral-card"
-                              href={c.profile_link || '#'}
+                              href={c.search_url || c.profile_link || '#'}
                               target="_blank"
                               rel="noreferrer"
                             >
                                <div className="viral-card-name">{c.name || t('contentGenerator.unknownCreator')}</div>
+                              <span className={`market-match-badge ${c.match_type === 'exact' ? 'exact' : 'related'}`}>{c.match_type === 'exact' ? 'Exact match' : 'Related post'}</span>
+                              {c.post_title && <strong className="viral-card-post-title">{c.post_title}</strong>}
                               {c.viral_hook && (
                                 <div className="viral-card-hook">
                                   <span className="q">“</span>{c.viral_hook}<span className="q">”</span>
                                 </div>
                               )}
-                               <div className="viral-card-link">{t('contentGenerator.openProfile')}</div>
+                              {c.post_snippet && <p className="viral-card-snippet">{c.post_snippet}</p>}
+                              {c.match_type === 'related' && <small className="viral-card-related">Related because it mentions: {(c.matched_terms || []).join(', ')}</small>}
+                              <div className="viral-card-link">Search {PLATFORM_META[platform].label} posts <ExternalLink size={13} /></div>
                             </a>
                           ))
                         )}

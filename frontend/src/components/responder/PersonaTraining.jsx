@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, ChevronDown, CircleSlash, Loader2, Plus, ShieldAlert, ShieldCheck, Trash2, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, CircleSlash, Loader2, Plus, ShieldAlert, ShieldCheck, Trash2, X, Zap, SlidersHorizontal, MessageCircle, Tags, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { extractApiError } from '../../api/axios';
 import { LANG_OPTIONS, MATCH_TYPES, MODE_META, NO_MATCH_OPTIONS, PLATFORM_META, PlatformBadge, modeLabel, timeAgo, useResponderPlatforms } from './shared';
@@ -255,7 +255,7 @@ function ReplyModeSection({ modes, fallbackReady, onWorkspaceChange, onChannelCh
       </div>
 
       <div className="ar-label">Per channel <small>Give a channel its own mode, e.g. one account on Instant and another on Review. A rule set to “Always review” wins over both.</small>
-        {channels.length === 0 ? <p className="ar-empty-line">No channels connected yet. Connect one on the Channels page.</p> : (
+        {channels.length === 0 ? <p className="ar-empty-line">No channels connected yet. Connect one from your Business profile.</p> : (
           <ul className="ar-channel-modes">
             {channels.map((c) => (
               <li key={c.key}>
@@ -483,6 +483,7 @@ export default function PersonaTraining({ onSimulated, modes = null, onWorkspace
   const [openKeys, setOpenKeys] = useState(() => new Set());
   const [focusKey, setFocusKey] = useState(null);
   const [hitKey, setHitKey] = useState(null);
+  const [activeSection, setActiveSection] = useState('setup');
   const answerRefs = useRef({});
 
   const loadGaps = useCallback(() => {
@@ -603,12 +604,27 @@ export default function PersonaTraining({ onSimulated, modes = null, onWorkspace
   if (loading) return <div className="ar-loading"><Loader2 size={18} className="ar-spin" /> Loading your rules…</div>;
 
   const auto = persona.auto_reply;
+  const sections = [
+    { id: 'setup', title: 'Get started', detail: 'Turn replies on and choose where they work.', icon: SlidersHorizontal, status: auto.enabled ? 'On' : 'Off' },
+    { id: 'respond', title: 'How to respond', detail: 'Choose instant replies or review them first.', icon: MessageCircle, status: modes?.workspace?.mode === 'review' ? 'Review first' : 'Instant' },
+    { id: 'rules', title: 'Keywords & replies', detail: 'Add words that trigger your saved answers.', icon: Tags, status: `${persona.rules.length} ${persona.rules.length === 1 ? 'rule' : 'rules'}` },
+    { id: 'learn', title: 'Learn from comments', detail: 'Turn unanswered comments into new replies.', icon: Sparkles, status: gaps?.groups?.length ? `${gaps.groups.length} ideas` : 'Feedback' },
+  ];
   return (
     <div className="ar-training">
       <div className="ar-training-main">
-        <Section title="Settings" hint="Turn the auto-responder on and choose what it handles. Whether replies post instantly or wait for you is set under Reply mode.">
+        <nav className="ar-guide-grid" aria-label="Reply setup steps">
+          {sections.map(({ id, title, detail, icon: Icon, status }) => (
+            <button type="button" key={id} className={`ar-guide-card ${activeSection === id ? 'active' : ''}`} onClick={() => setActiveSection(id)} aria-pressed={activeSection === id}>
+              <span className="ar-guide-icon"><Icon size={18} /></span>
+              <span className="ar-guide-copy"><strong>{title}</strong><small>{detail}</small><em>{status}</em></span>
+            </button>
+          ))}
+        </nav>
+
+        {activeSection === 'setup' && <Section title="Turn replies on" hint="Choose what the assistant can answer. You can change this any time.">
           <div className={`ar-master ${auto.enabled ? 'on' : ''}`}>
-            <div><strong>{auto.enabled ? 'Auto-responder is ON' : 'Auto-responder is OFF'}</strong><small>{auto.enabled ? 'New comments and DMs are handled with your rules and reply mode.' : 'Incoming messages are logged but nothing is replied or queued.'}</small></div>
+            <div><strong>{auto.enabled ? 'Auto-responder is ON' : 'Auto-responder is OFF'}</strong><small>{auto.enabled ? 'New comments and messages use your saved replies.' : 'Turn it on when you are ready. You can still review replies first.'}</small></div>
             <button type="button" role="switch" aria-checked={auto.enabled} className="m-switch m-switch--lg" onClick={() => setAuto('enabled', !auto.enabled)} />
           </div>
           <div className="ar-grid-2">
@@ -622,55 +638,39 @@ export default function PersonaTraining({ onSimulated, modes = null, onWorkspace
               </button>
             ))}
           </div>
-        </Section>
+        </Section>}
 
-        <ReplyModeSection
-          modes={modes}
-          fallbackReady={cleanAnswers(saved.fallback.answers).length > 0}
-          onWorkspaceChange={onWorkspaceChange}
-          onChannelChange={onChannelChange}
-          onAlwaysReview={onAlwaysReview}
-        />
+        {activeSection === 'respond' && <>
+          <ReplyModeSection
+            modes={modes}
+            fallbackReady={cleanAnswers(saved.fallback.answers).length > 0}
+            onWorkspaceChange={onWorkspaceChange}
+            onChannelChange={onChannelChange}
+            onAlwaysReview={onAlwaysReview}
+          />
+          <Section title="When nothing matches" hint="A friendly default reply for comments without a matching keyword. You can also choose to review these comments first.">
+            <AnswersEditor answers={persona.fallback.answers} onChange={(answers) => setPersona((p) => ({ ...p, fallback: { ...p.fallback, answers } }))} placeholder="For example: Thanks for reaching out! Send us a message and we’ll help." />
+          </Section>
+        </>}
 
-        {gaps !== undefined && <GapsSection report={gaps} rules={persona.rules} onAddNew={addGapAsRule} onAddTo={addGapToRule} />}
+        {activeSection === 'learn' && (gaps !== undefined ? <GapsSection report={gaps} rules={persona.rules} onAddNew={addGapAsRule} onAddTo={addGapToRule} /> : <Section title="Learn from comments" hint="Comments that did not match a reply rule will appear here so you can teach the assistant what to say next."><p className="ar-empty-line">Loading recent comments…</p></Section>)}
 
-        <Section
-          title="Reply rules"
-          hint="Rules are checked against every comment. If several match, the highest priority wins, then the most specific (longest keyword), then the higher rule in the list."
-          action={<button type="button" className="m-btn m-btn--secondary" onClick={() => addRule()}><Plus size={14} /> Add rule</button>}
-        >
-          {persona.rules.length === 0 && <p className="ar-empty-line">No rules yet. Every comment will get the fallback reply.</p>}
-          <div className="ar-rules">
-            {persona.rules.map((rule, i) => (
-              <RuleCard
-                key={rule._key}
-                rule={rule}
-                index={i}
-                count={persona.rules.length}
-                open={openKeys.has(rule._key)}
-                highlight={hitKey === rule._key}
-                onToggle={() => toggleOpen(rule._key)}
-                onChange={(next) => updateRule(rule._key, next)}
-                onMove={(dir) => moveRule(rule._key, dir)}
-                onDelete={() => deleteRule(rule)}
-                answerRef={(el) => { answerRefs.current[rule._key] = el; }}
-              />
-            ))}
-          </div>
-        </Section>
-
-        <Section
-          title="Fallback reply"
-          hint={modes?.workspace?.no_match_action === 'fallback'
-            ? 'Posted instantly when no rule matches (your “When no rule matches” setting). One is picked at random, in the comment’s language.'
-            : 'Never posted on its own with your current settings. It is the suggested reply on unmatched comments in Needs your attention.'}
-        >
-          <AnswersEditor answers={persona.fallback.answers} onChange={(answers) => setPersona((p) => ({ ...p, fallback: { ...p.fallback, answers } }))} placeholder="e.g. Thanks for reaching out! Please DM us." />
-        </Section>
-
-        <Section title="Blocklist: always review" hint="A comment containing any of these words always waits for you, in any mode, whatever rule matched. Offensive and sensitive words are always held too.">
-          <ChipInput values={persona.escalation_keywords} onChange={(v) => setPersona((p) => ({ ...p, escalation_keywords: v }))} max={80} maxLength={60} tone="danger" placeholder="e.g. refund" />
-        </Section>
+        {activeSection === 'rules' && <>
+          <Section title="Keywords & replies" hint="Add a rule for common questions. For example, when someone says “price”, send your pricing answer. Add as many as you need."
+            action={<button type="button" className="m-btn m-btn--secondary" onClick={() => addRule()}><Plus size={14} /> Add a reply rule</button>}>
+            {persona.rules.length === 0 && <p className="ar-empty-line">No reply rules yet. Add one for a common question or keyword.</p>}
+            <div className="ar-rules">
+              {persona.rules.map((rule, i) => (
+                <RuleCard key={rule._key} rule={rule} index={i} count={persona.rules.length} open={openKeys.has(rule._key)} highlight={hitKey === rule._key}
+                  onToggle={() => toggleOpen(rule._key)} onChange={(next) => updateRule(rule._key, next)} onMove={(dir) => moveRule(rule._key, dir)}
+                  onDelete={() => deleteRule(rule)} answerRef={(el) => { answerRefs.current[rule._key] = el; }} />
+              ))}
+            </div>
+          </Section>
+          <Section title="Sensitive words" hint="Comments mentioning these words always wait for you to review them. Add words such as “refund” or “complaint”.">
+            <ChipInput values={persona.escalation_keywords} onChange={(v) => setPersona((p) => ({ ...p, escalation_keywords: v }))} max={80} maxLength={60} tone="danger" placeholder="Type a word and press Enter" />
+          </Section>
+        </>}
 
         <div className={`ar-savebar ${dirty ? 'is-dirty' : ''}`}>
           <span>{dirty ? 'You have unsaved changes' : 'All changes saved'}</span>

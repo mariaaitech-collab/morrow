@@ -22,7 +22,6 @@ import Terms from './pages/Terms';
 // (smaller initial JS bundle -> better LCP / Core Web Vitals).
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Create = lazy(() => import('./pages/Create'));
-const Channels = lazy(() => import('./pages/Channels'));
 const Scheduler = lazy(() => import('./pages/Scheduler'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const History = lazy(() => import('./pages/History'));
@@ -177,14 +176,7 @@ function AppContent() {
             }
           />
           <Route path="/studio" element={<Navigate to="/create" replace />} />
-          <Route
-            path="/channels"
-            element={
-              <ProtectedRoute>
-                <Channels user={user} onLogout={handleLogout} />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/channels" element={<Navigate to="/profile#business-profile" replace />} />
           <Route
             path="/scheduler"
             element={

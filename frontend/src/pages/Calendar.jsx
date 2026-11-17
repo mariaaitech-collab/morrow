@@ -132,6 +132,7 @@ function Calendar({ user, onLogout }) {
       new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
   }, [refDate]);
   const monthLabel = refDate.toLocaleDateString(language, { month: 'long', year: 'numeric' });
+  const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time';
 
   // ---- Week grid ----
   const weekCells = useMemo(() => {
@@ -308,10 +309,11 @@ function Calendar({ user, onLogout }) {
 
         {pageTab === 'calendar' ? (
           <>
-            <div className="legend" style={{ display: 'flex', gap: '1.2rem', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <div className="legend calendar-legend" style={{ display: 'flex', gap: '1.2rem', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               <span><span style={{ color: 'var(--accent)' }}>●</span> {t('calendar.legendScheduled')}</span>
               <span><span style={{ color: 'var(--success)' }}>●</span> {t('calendar.legendPublished')}</span>
               <span><span style={{ color: 'var(--accent-2)' }}>●</span> {t('calendar.legendNote')}</span>
+              <span className="calendar-timezone">Times shown in {localTimeZone}</span>
             </div>
 
             {loading ? (

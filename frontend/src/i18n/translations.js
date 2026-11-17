@@ -313,7 +313,7 @@ const en = {
     owner: 'Account owner',
     email: 'Account email',
     connectedChannels: 'Publishing channels',
-    connectedChannelsHint: 'Social accounts are managed from Connected Channels.',
+    connectedChannelsHint: 'Connect and manage social accounts from this profile.',
     businessNameFallback: 'Your business name',
     businessTypeFallback: 'Business type not added',
     notAvailable: 'Not available',

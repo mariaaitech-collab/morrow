@@ -1,8 +1,7 @@
 /* =============================================================
    Workspace shell: Canva-style purple icon rail + sticky topbar.
    Tokens only.
-   >= 1101px  104px rail: icon tiles with 12px labels below
-   768-1100px 76px rail: icon tiles only (labels kept for screen readers)
+   >= 768px   64px rail: icon tiles only, with native hover titles
    <= 767px   off-canvas drawer behind the menu button
    Layers: topbar --z-topbar (20), drawer + scrim --z-drawer (50).
    ============================================================= */
@@ -31,8 +30,8 @@
 .m-skip-link:focus { top: var(--space-3); outline: none; box-shadow: var(--ring-offset); }
 
 /* ---------- Sidebar ----------
-   Expanded (default on desktop): full panel with labels beside the icons.
-   .is-collapsed (menu button): slim icon rail, labels kept for screen readers + tooltips.
+   .is-collapsed (default): slim icon rail, labels kept for screen readers + hover titles.
+   Expanded (menu button): full panel with labels beside the icons.
    Phones: the expanded panel slides in as a drawer. */
 .m-sidebar {
   position: fixed;
@@ -76,16 +75,17 @@
   gap: var(--space-3);
   min-height: 48px;
   padding: 0 var(--space-4) 0 6px;
-  border-radius: 14px;
-  background: var(--highlight);
+  border-radius: var(--radius-pill);
+  background: radial-gradient(ellipse at 28% 0%, color-mix(in srgb, var(--surface) 64%, transparent), transparent 48%), var(--highlight-gradient);
   color: var(--on-highlight);
   font-weight: 700;
   text-decoration: none;
-  transition: background-color 0.15s ease;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--highlight) 28%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 72%, transparent);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 .m-rail-create__tile { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; }
 .m-rail-create .m-nav__label { font-size: var(--fs-body); font-weight: 700; -webkit-line-clamp: 1; }
-.m-rail-create:hover { background: var(--highlight-hover); }
+.m-rail-create:hover { background: radial-gradient(ellipse at 28% 0%, color-mix(in srgb, var(--surface) 72%, transparent), transparent 48%), var(--highlight-gradient); transform: translateY(-1px); box-shadow: 0 10px 22px color-mix(in srgb, var(--highlight) 36%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 80%, transparent); filter: saturate(1.05); }
 .m-rail-create:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--sidebar), 0 0 0 4px var(--sidebar-accent); }
 
 .m-nav,
@@ -140,6 +140,42 @@
   margin-top: auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--sidebar-border);
+}
+
+/* Floating label for the compact icon rail. Rendered in the document layer so
+   the sidebar's scroll area cannot clip the card. */
+.m-nav-tooltip {
+  position: fixed;
+  z-index: var(--z-toast);
+  inset-inline-start: calc(var(--sidebar-rail) + 12px);
+  min-width: 88px;
+  max-width: min(240px, calc(100vw - var(--sidebar-rail) - 28px));
+  padding: 9px 14px;
+  transform: translateY(-50%);
+  border: 1px solid color-mix(in srgb, var(--sidebar-accent) 55%, white 12%);
+  border-radius: 12px;
+  background: linear-gradient(115deg, #351078 0%, #5422a0 48%, #087e87 100%);
+  background-size: 200% 200%;
+  color: #fff;
+  box-shadow: 0 10px 26px rgb(25 8 54 / 28%), 0 0 0 1px rgb(255 255 255 / 8%) inset;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: m-nav-tooltip-in 160ms ease-out both, m-nav-tooltip-glow 5s ease-in-out 160ms infinite;
+}
+[dir="rtl"] .m-nav-tooltip { inset-inline-start: auto; inset-inline-end: calc(var(--sidebar-rail) + 12px); }
+@keyframes m-nav-tooltip-in {
+  from { opacity: 0; translate: -5px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes m-nav-tooltip-glow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-nav-tooltip { animation: none; }
 }
 
 /* Collapsed rail (desktop/tablet, via the menu button). */

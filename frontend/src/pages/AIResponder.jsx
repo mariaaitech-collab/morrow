@@ -6,10 +6,8 @@ import api, { extractApiError } from '../api/axios';
 import WorkspaceShell from '../components/WorkspaceShell';
 import PersonaTraining from '../components/responder/PersonaTraining';
 import ApprovalQueue, { ActivityLog } from '../components/responder/ApprovalQueue';
-import WebhookSetup from '../components/responder/WebhookSetup';
 import ModeBar from '../components/responder/ModeBar';
 import ChannelHealth from '../components/responder/ChannelHealth';
-import InboundLog from '../components/responder/InboundLog';
 import { MODE_META, PLATFORM_META, ResponderPlatformsContext, joinNames } from '../components/responder/shared';
 import '../components/responder/responder.css';
 
@@ -17,7 +15,6 @@ const TABS = [
   { id: 'persona', label: 'Rules & Replies' },
   { id: 'queue', label: 'Needs your attention' },
   { id: 'activity', label: 'Activity' },
-  { id: 'setup', label: 'Webhooks' },
 ];
 
 export default function AIResponder({ user, onLogout }) {
@@ -116,29 +113,31 @@ export default function AIResponder({ user, onLogout }) {
       <div className="m-page ar-page">
         <header className="ar-hero">
           <h1>Auto-Responder</h1>
-          <p>Write your reply rules once, then choose how replies go out: posted instantly when a rule matches, or held for your review. Edit or delete any reply afterwards in Activity.</p>
+          <p>Choose how to handle new comments. Set up reply rules, review replies, and check what has been sent.</p>
         </header>
 
-        <ModeBar modes={modes} onUpdate={updateWorkspace} />
-        {scopeLine && <p className="ar-scope-note"><Info size={15} aria-hidden="true" /> {scopeLine}</p>}
-        <ChannelHealth channels={health} loading={healthLoading} onRefresh={loadHealth} />
-
-        {stats && (
-          <section className="ar-ribbon" aria-label="Responder summary">
-            <div><strong>{stats.auto_replied}</strong><span>Auto-replied</span></div>
-            <div><strong>{stats.pending}</strong><span>Need your attention</span></div>
-            <div><strong>{stats.approved}</strong><span>Sent by you</span></div>
-            <div><strong>{stats.reply_deleted ?? 0}</strong><span>Deleted</span></div>
-          </section>
-        )}
-
-        <nav className="ar-tabs" role="tablist">
+        <nav className="ar-tabs" role="tablist" aria-label="Auto-responder sections">
           {TABS.map((t) => (
             <button type="button" role="tab" key={t.id} aria-selected={tab === t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
               <span>{t.label}</span>{t.id === 'queue' && pending > 0 && <em className="ar-count">{pending}</em>}
             </button>
           ))}
         </nav>
+
+        <ModeBar modes={modes} onUpdate={updateWorkspace} />
+        {tab !== 'persona' && <>
+          {scopeLine && <p className="ar-scope-note"><Info size={15} aria-hidden="true" /> {scopeLine}</p>}
+          <ChannelHealth channels={health} loading={healthLoading} onRefresh={loadHealth} />
+
+          {stats && (
+            <section className="ar-ribbon" aria-label="Responder summary">
+              <div><strong>{stats.auto_replied}</strong><span>Auto-replied</span></div>
+              <div><strong>{stats.pending}</strong><span>Need your attention</span></div>
+              <div><strong>{stats.approved}</strong><span>Sent by you</span></div>
+              <div><strong>{stats.reply_deleted ?? 0}</strong><span>Deleted</span></div>
+            </section>
+          )}
+        </>}
 
         <div className="ar-tab-body">
           {tab === 'persona' && (
@@ -152,7 +151,6 @@ export default function AIResponder({ user, onLogout }) {
           )}
           {tab === 'queue' && <ApprovalQueue refreshKey={refreshKey} onCountChange={onQueueCount} modes={modes} onAlwaysReview={setAlwaysReview} />}
           {tab === 'activity' && <ActivityLog refreshKey={refreshKey} modes={modes} onAlwaysReview={setAlwaysReview} />}
-          {tab === 'setup' && <><WebhookSetup /><InboundLog /></>}
         </div>
       </div>
       </ResponderPlatformsContext.Provider>

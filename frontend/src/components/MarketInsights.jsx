@@ -59,6 +59,7 @@ function MarketInsights() {
 
   const selectedPlatforms = draft.selectedPlatforms || ['facebook', 'linkedin', 'instagram'];
   const leaders = Array.isArray(draft.marketData?.market_leaders) ? draft.marketData.market_leaders : [];
+  const matchingPosts = Array.isArray(draft.marketData?.matching_posts) ? draft.marketData.matching_posts : [];
   const positioning = Array.isArray(draft.marketData?.positioning_advice) ? draft.marketData.positioning_advice : [];
   const tactics = draft.marketData?.platform_tactics || {};
   const quickWins = Array.isArray(draft.marketData?.quick_wins) ? draft.marketData.quick_wins : [];
@@ -142,6 +143,32 @@ function MarketInsights() {
             </div>
           )}
 
+          {matchingPosts.length > 0 && (
+            <section className="strategy-section market-result-section market-matches">
+              <div className="strategy-section-head">
+                <span className="strategy-section-icon"><Search size={18} /></span>
+                <div>
+                  <h5>Posts matching “{draft.marketData.query || draft.marketQuery || profile.niche}”</h5>
+                  <p>{draft.marketData.search_meta?.exact_results || 0} exact matches · {draft.marketData.search_meta?.related_results || 0} related posts. Unrelated results are filtered out.</p>
+                </div>
+              </div>
+              <div className="market-source-list">
+                {matchingPosts.map((post, i) => (
+                  <article className="market-source-card" key={`${post.platform}-${post.url || i}`}>
+                    <div className="market-source-meta">
+                      <span className={`platform-badge ${PLATFORM_META[post.platform]?.badge || 'badge-facebook'}`}>{PLATFORM_META[post.platform]?.label || post.platform}</span>
+                      <span className={`market-match-badge ${post.match_type === 'exact' ? 'exact' : 'related'}`}>{post.match_type === 'exact' ? 'Exact match' : 'Related post'}</span>
+                    </div>
+                    <strong>{post.title || post.url}</strong>
+                    {post.snippet && <p>{post.snippet}</p>}
+                    {post.match_type === 'related' && <small>Related because it mentions: {(post.matched_terms || []).join(', ') || 'some of your topic'}</small>}
+                    {post.search_url && <a href={post.search_url} target="_blank" rel="noreferrer" className="market-leader-link">Find on {PLATFORM_META[post.platform]?.label || post.platform} <ExternalLink size={13} /></a>}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
           {leaders.length > 0 && (
             <section className="strategy-section market-result-section">
               <div className="strategy-section-head">
@@ -163,9 +190,9 @@ function MarketInsights() {
                     {c.positioning && <p className="market-leader-row"><b>{t('market.positioning')}:</b> {c.positioning}</p>}
                     {c.winning_move && <p className="market-leader-row good"><b>{t('market.winning')}:</b> {c.winning_move}</p>}
                     {c.gap && <p className="market-leader-row warn"><b>{t('market.gap')}:</b> {c.gap}</p>}
-                    {c.link && (
-                      <a href={c.link} target="_blank" rel="noreferrer" className="market-leader-link">
-                        {t('market.openSource')} <ExternalLink size={13} />
+                    {(c.search_url || c.link) && (
+                      <a href={c.search_url || c.link} target="_blank" rel="noreferrer" className="market-leader-link">
+                        Search {PLATFORM_META[c.platform]?.label || c.platform} <ExternalLink size={13} />
                       </a>
                     )}
                   </div>

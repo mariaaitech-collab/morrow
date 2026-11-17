@@ -30,8 +30,8 @@
 .m-btn:disabled,
 .m-btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 
-.m-btn--primary { background: var(--accent); color: var(--on-accent); }
-.m-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+.m-btn--primary { border-color: transparent; background: var(--brand-gradient-action); color: var(--surface); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-2) 18%, transparent); }
+.m-btn--primary:hover:not(:disabled) { background: var(--brand-gradient-action); box-shadow: 0 9px 22px color-mix(in srgb, var(--accent-2) 26%, transparent); transform: translateY(-1px); }
 
 .m-btn--cta { background: var(--cta); color: var(--on-cta); font-weight: 700; }
 .m-btn--cta:hover:not(:disabled) { background: var(--cta-hover); }
@@ -39,8 +39,9 @@
 .m-btn--purple { background: var(--accent-2); color: var(--surface); }
 .m-btn--purple:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-2) 88%, var(--text)); }
 
-.m-btn--highlight { background: var(--highlight); color: var(--on-highlight); font-weight: 700; }
-.m-btn--highlight:hover:not(:disabled) { background: var(--highlight-hover); }
+.m-btn--highlight { border-radius: var(--radius-pill); background: radial-gradient(ellipse at 26% 0%, color-mix(in srgb, var(--surface) 64%, transparent), transparent 48%), var(--highlight-gradient); color: var(--on-highlight); font-weight: 700; box-shadow: 0 7px 18px color-mix(in srgb, var(--highlight) 30%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 72%, transparent); transition: transform .18s ease, box-shadow .18s ease, filter .18s ease; }
+.m-btn--highlight:hover:not(:disabled) { background: radial-gradient(ellipse at 26% 0%, color-mix(in srgb, var(--surface) 72%, transparent), transparent 48%), var(--highlight-gradient); transform: translateY(-2px); box-shadow: 0 11px 24px color-mix(in srgb, var(--highlight) 38%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 78%, transparent); filter: saturate(1.06); }
+.m-btn--highlight:active:not(:disabled) { transform: translateY(0) scale(.98); }
 
 .m-btn--secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
 .m-btn--secondary:hover:not(:disabled) { background: var(--surface-2); }
@@ -59,13 +60,39 @@
 
 /* ---------- Card ---------- */
 .m-card {
+  position: relative;
   min-width: 0;
   padding: var(--card-padding);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent-2) 10%, var(--border));
   border-radius: var(--radius-card);
-  background: var(--surface);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 97%, var(--accent-2)), var(--surface) 58%, color-mix(in srgb, var(--surface) 98%, var(--sidebar-accent)));
   color: var(--text);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--sidebar) 5%, transparent);
 }
+.m-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  border-radius: inherit;
+  background: var(--brand-gradient);
+  opacity: .35;
+  content: "";
+  pointer-events: none;
+}
+
+/* Shared authenticated-page surfaces use the same soft Morrow glass finish. */
+.m-main .business-profile-card,
+.m-main .history-card,
+.m-main .admin-card,
+.m-main .ar-card,
+.m-main .note-card {
+  border-color: color-mix(in srgb, var(--accent-2) 12%, var(--border));
+  background-image:
+    radial-gradient(75% 160px at 100% 0%, color-mix(in srgb, var(--sidebar-accent) 7%, transparent), transparent 78%),
+    linear-gradient(145deg, color-mix(in srgb, var(--surface) 98%, var(--accent-2)), var(--surface) 60%, color-mix(in srgb, var(--surface) 98%, var(--sidebar-accent)));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--sidebar) 7%, transparent);
+}
+.m-main .note-card:hover { border-color: color-mix(in srgb, var(--sidebar-accent) 44%, var(--accent-2)); box-shadow: 0 12px 26px color-mix(in srgb, var(--accent-2) 11%, transparent); }
 .m-card--flush { padding: 0; }
 .m-card--interactive {
   display: block;

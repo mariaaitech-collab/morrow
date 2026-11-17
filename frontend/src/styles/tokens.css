@@ -28,12 +28,14 @@
   --accent-2: #4A15A3;      /* PURPLE: secondary emphasis, active tabs/filters */
   --highlight: #FACC15;     /* YELLOW: reserved high-emphasis actions */
   --highlight-hover: #EAB308;
+  --highlight-gradient: linear-gradient(125deg, #FFE878 0%, #FACC15 54%, #F5B91B 100%);
   --on-highlight: #1F2937;  /* text on yellow */
   --on-accent: #0F172A;     /* text on teal (dark navy, never white) */
   --cta: var(--accent);
   --cta-hover: var(--accent-hover);
   --on-cta: #0F172A;
   --brand-gradient: linear-gradient(135deg, #00D2C8 0%, #4A15A3 100%);
+  --brand-gradient-action: linear-gradient(112deg, #4A15A3 0%, #3B367D 54%, #08796F 100%);
   --mint: #E6FAF9;          /* soft teal icon-tile background */
 
   /* Status */
@@ -92,7 +94,7 @@
 
   /* Layout */
   --sidebar-width: 104px;
-  --sidebar-rail: 76px;
+  --sidebar-rail: 64px;
   --sidebar-expanded: 248px;   /* sidebar opened with the menu button */
   --topbar-height: 72px;
   --page-max: 1320px;

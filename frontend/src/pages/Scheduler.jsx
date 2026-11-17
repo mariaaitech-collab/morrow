@@ -159,6 +159,10 @@ function Scheduler({ user, onLogout }) {
       .filter((p) => new Date(p.scheduled_at).toDateString() === day.toDateString())
       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
+  const weekPosts = weekDays.flatMap((day) => postsByDay(day));
+  const weekScheduled = weekPosts.filter((post) => ['pending', 'processing'].includes(post.status)).length;
+  const weekPublished = weekPosts.filter((post) => post.status === 'published').length;
+
   const openDay = (day) => {
     setSelectedDay(day);
     setFormTime('10:00');
@@ -303,7 +307,11 @@ function Scheduler({ user, onLogout }) {
       <WorkspaceShell user={user} onLogout={onLogout} active="scheduler">
       <div className="m-page scheduler-page">
         <div className="scheduler-head">
-          <h1>{t('scheduler.title')}</h1>
+          <div className="scheduler-title">
+            <span className="scheduler-eyebrow">YOUR CONTENT, ON YOUR TIME</span>
+            <h1>{t('scheduler.title')}</h1>
+            <p>Plan your posts for the week and choose when each one goes live.</p>
+          </div>
           <div className="week-nav">
             <button className="btn btn-outline btn-sm" onClick={() => setWeekOffset((w) => w - 1)}>{t('scheduler.prev')}</button>
             <span className="week-label">
@@ -312,6 +320,13 @@ function Scheduler({ user, onLogout }) {
             <button className="btn btn-outline btn-sm" onClick={() => setWeekOffset((w) => w + 1)}>{t('scheduler.next')}</button>
           </div>
         </div>
+
+        <section className="scheduler-overview" aria-label="This week at a glance">
+          <div className="scheduler-stat scheduler-stat--total"><span className="scheduler-stat-icon">✦</span><span><strong>{weekPosts.length}</strong><small>Posts this week</small></span></div>
+          <div className="scheduler-stat scheduler-stat--queued"><span className="scheduler-stat-icon">◷</span><span><strong>{weekScheduled}</strong><small>Coming up</small></span></div>
+          <div className="scheduler-stat scheduler-stat--published"><span className="scheduler-stat-icon">✓</span><span><strong>{weekPublished}</strong><small>Published</small></span></div>
+          <div className="scheduler-overview-tip"><strong>Ready to plan?</strong><span>Select a day below to write and schedule a post.</span></div>
+        </section>
 
         {loading ? (
           <p className="sched-empty">{t('scheduler.loading')}</p>

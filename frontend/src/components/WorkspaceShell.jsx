@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Bot, Building2, CalendarClock, CalendarDays, ChevronRight, CreditCard, History, LayoutDashboard,
-  LogOut, LucideProvider, PanelLeftClose, PanelLeftOpen, PenLine, Plus, Settings, Users, X,
+  LogOut, LucideProvider, PanelLeftClose, PanelLeftOpen, PenLine, Plus, Settings, X,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { Badge, IconButton, Logo } from './ui';
@@ -18,24 +19,16 @@ import './WorkspaceShell.css';
  */
 export default function WorkspaceShell({ user, onLogout, children, active, legacy = false }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [navTooltip, setNavTooltip] = useState(null);
   const sidebarRef = useRef(null);
-  // Desktop: full sidebar (labels) or slim icon rail. Remembered; tablets start collapsed.
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      const saved = localStorage.getItem('morrow_sidebar_collapsed');
-      if (saved !== null) return saved === '1';
-    } catch { /* storage unavailable */ }
-    return typeof window !== 'undefined' && window.innerWidth <= 1100;
-  });
+  // Keep the workspace compact by default; the menu button can expand it on desktop.
+  const [collapsed, setCollapsed] = useState(true);
   const toggleSidebar = () => {
     if (window.matchMedia('(max-width: 767px)').matches) {
       setMobileOpen(true);
       return;
     }
-    setCollapsed((c) => {
-      try { localStorage.setItem('morrow_sidebar_collapsed', c ? '0' : '1'); } catch { /* ignore */ }
-      return !c;
-    });
+    setCollapsed((c) => !c);
   };
   const location = useLocation();
   const { t } = useLanguage();
@@ -48,7 +41,6 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
     { label: t('nav.createPost') || 'Create', to: '/create', icon: PenLine, key: 'create' },
     { label: t('nav.calendar'), to: '/calendar', icon: CalendarDays, key: 'calendar' },
     { label: t('nav.scheduler'), to: '/scheduler', icon: CalendarClock, key: 'scheduler' },
-    { label: t('dashboard.channelsLabel') || 'Channels', to: '/channels', icon: Users, key: 'channels' },
     { label: t('nav.aiResponder'), to: '/ai-responder', icon: Bot, key: 'ai-responder' },
     { label: t('nav.history'), to: '/history', icon: History, key: 'history' },
     { label: t('profile.title'), to: '/profile', icon: Building2, key: 'profile' },
@@ -59,6 +51,15 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
   const current = navItems.find((item) => item.key === activeRoute) || navItems[0];
 
   const close = () => setMobileOpen(false);
+  const showNavTooltip = (event, label) => {
+    if (!collapsed || window.matchMedia('(max-width: 767px)').matches) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setNavTooltip({ label, top: rect.top + rect.height / 2 });
+  };
+
+  useEffect(() => {
+    if (!collapsed) setNavTooltip(null);
+  }, [collapsed]);
 
   useEffect(() => {
     if (!mobileOpen) return undefined;
@@ -122,7 +123,15 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
             <IconButton className="m-sidebar__close" icon={X} label={t('nav.closeNavigation')} onClick={close} />
           </div>
 
-          <Link to="/create" className="m-rail-create" onClick={close} title={t('nav.createPost')}>
+          <Link
+            to="/create"
+            className="m-rail-create"
+            onClick={close}
+            onMouseEnter={(event) => showNavTooltip(event, t('nav.createPost'))}
+            onMouseLeave={() => setNavTooltip(null)}
+            onFocus={(event) => showNavTooltip(event, t('nav.createPost'))}
+            onBlur={() => setNavTooltip(null)}
+          >
             <span className="m-rail-create__tile"><Plus size={22} strokeWidth={2} aria-hidden="true" /></span>
             <span className="m-nav__label">{t('nav.createPost')}</span>
           </Link>
@@ -134,8 +143,11 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
                 to={to}
                 className="m-nav__link"
                 aria-current={activeRoute === key ? 'page' : undefined}
-                title={label}
                 onClick={close}
+                onMouseEnter={(event) => showNavTooltip(event, label)}
+                onMouseLeave={() => setNavTooltip(null)}
+                onFocus={(event) => showNavTooltip(event, label)}
+                onBlur={() => setNavTooltip(null)}
               >
                 <span className="m-nav__tile"><Icon size={20} aria-hidden="true" /></span>
                 <span className="m-nav__label">{label}</span>
@@ -147,13 +159,24 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
             <button
               type="button"
               className="m-nav__link"
-              title={t('nav.billing')}
+              onMouseEnter={(event) => showNavTooltip(event, t('nav.billing'))}
+              onMouseLeave={() => setNavTooltip(null)}
+              onFocus={(event) => showNavTooltip(event, t('nav.billing'))}
+              onBlur={() => setNavTooltip(null)}
               onClick={() => window.dispatchEvent(new CustomEvent('brandora:upgrade-required'))}
             >
               <span className="m-nav__tile"><CreditCard size={20} aria-hidden="true" /></span>
               <span className="m-nav__label">{t('nav.billing')}</span>
             </button>
-            <button type="button" className="m-nav__link" title={t('nav.logout')} onClick={onLogout}>
+            <button
+              type="button"
+              className="m-nav__link"
+              onMouseEnter={(event) => showNavTooltip(event, t('nav.logout'))}
+              onMouseLeave={() => setNavTooltip(null)}
+              onFocus={(event) => showNavTooltip(event, t('nav.logout'))}
+              onBlur={() => setNavTooltip(null)}
+              onClick={onLogout}
+            >
               <span className="m-nav__tile"><LogOut size={20} aria-hidden="true" /></span>
               <span className="m-nav__label">{t('nav.logout')}</span>
             </button>
@@ -193,6 +216,17 @@ export default function WorkspaceShell({ user, onLogout, children, active, legac
           </main>
         </div>
       </div>
+      {navTooltip && createPortal(
+        <div
+          key={navTooltip.label}
+          className="m-nav-tooltip"
+          style={{ top: navTooltip.top }}
+          aria-hidden="true"
+        >
+          {navTooltip.label}
+        </div>,
+        document.body,
+      )}
     </LucideProvider>
   );
 }

@@ -79,7 +79,12 @@ def _cached_at_str(value) -> str:
         return "an earlier run"
 
 
-async def _generate_post_content(topic: str, tone: str = "professional", language: str = "") -> dict:
+async def _generate_post_content(
+    topic: str,
+    tone: str = "professional",
+    language: str = "",
+    platforms: list[str] | None = None,
+) -> dict:
     """Core Gemini post generator.
 
     Converts a topic/prompt into a fully formatted, engaging social media post
@@ -91,12 +96,28 @@ async def _generate_post_content(topic: str, tone: str = "professional", languag
 
     tone_guide = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
     lang_rule = _language_rule(language)
+    platform_names = {
+        "facebook": "Facebook",
+        "instagram": "Instagram",
+        "linkedin": "LinkedIn",
+        "tiktok": "TikTok",
+    }
+    selected_platforms = [platform_names[p] for p in (platforms or []) if p in platform_names]
+    platform_guide = (
+        f"Optimize the wording and hashtag style for these selected platforms: {', '.join(selected_platforms)}. "
+        "Keep it as one adaptable caption that reads naturally on every selected platform."
+        if selected_platforms
+        else "Write a platform-neutral caption that can be adapted to common social networks."
+    )
 
     prompt = f"""{lang_rule}
 You are Brandora, an expert digital marketing content creator. Generate ONE single, high-quality social media post for the topic: "{topic}"
 
 TONE & STYLE:
 {tone_guide}
+
+PLATFORM FIT:
+{platform_guide}
 
 Return a JSON object with this exact structure:
 {{
@@ -106,7 +127,7 @@ Return a JSON object with this exact structure:
 
 CRITICAL RULES:
 - Generate ONE single post body, NOT separate versions per platform
-- The post must work on Facebook, LinkedIn, AND Instagram without modification
+- Keep the caption adaptable to the selected platforms above; do not write separate versions
 - Use a hook in the first line that grabs attention on any platform
 - Include a clear call-to-action at the end
 - Weave 3-5 relevant hashtags into the text naturally
@@ -169,6 +190,7 @@ async def generate_content(
     user: dict = Depends(require_token),
     topic: str = Form(...),
     tone: str = Form("professional"),
+    platforms: str = Form("[]"),
     language: str = Form(""),
 ):
     print(f"[CONTENT] Generating unified post for topic='{topic}', tone={tone}, language='{language}'")
@@ -184,7 +206,17 @@ async def generate_content(
         action="caption_generation", endpoint="POST /api/content/generate",
     )
 
-    content = await _generate_post_content(topic, tone, language)
+    try:
+        requested_platforms = json.loads(platforms or "[]")
+    except (TypeError, json.JSONDecodeError):
+        requested_platforms = []
+    allowed_platforms = {"facebook", "instagram", "linkedin", "tiktok"}
+    valid_platforms = [
+        p for p in requested_platforms
+        if isinstance(p, str) and p in allowed_platforms
+    ] if isinstance(requested_platforms, list) else []
+
+    content = await _generate_post_content(topic, tone, language, valid_platforms)
 
     remaining = await deduct_token(user)
     await record_usage(user, "content_generation", "Generated an AI caption", f"Topic: {topic.strip()[:90]}")
@@ -192,6 +224,7 @@ async def generate_content(
     return {
         "topic": topic,
         "tone": tone,
+        "platforms": valid_platforms,
         "title": content.get("title", ""),
         "body": content.get("body", ""),
         "tokens_left": remaining,
@@ -452,7 +485,6 @@ async def competitive_analysis(
 
     # Cost guard #1: reject oversized input before any API spend.
     limits.validate_input_len(topic, "Topic")
-    limits.validate_input_len(content, "Content")
 
     try:
         platform_list = json.loads(platforms) if platforms else ["linkedin", "instagram", "facebook"]

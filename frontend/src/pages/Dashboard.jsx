@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Bot, CalendarClock, CalendarDays, FileText, Film,
-  Image as ImageIcon, LineChart, PenLine, Share2, Sparkles, TrendingUp, Users,
+  ArrowDownRight, ArrowUpRight, CalendarClock, CalendarDays, FileText, Film,
+  Minus, Share2, TrendingUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok } from 'react-icons/fa';
@@ -14,7 +14,7 @@ import {
   Badge, Button, Card, CardHeader, EmptyState, PlatformTile,
   Skeleton, platformLabel,
 } from '../components/ui';
-import { formatLocal, isSameLocalDay, parseUtc, startOfWeek, timeAgo } from '../utils/time';
+import { formatLocal, parseUtc } from '../utils/time';
 import campaign1 from '../assets/campaign-1.webp';
 import campaign2 from '../assets/campaign-2.webp';
 import campaign3 from '../assets/campaign-3.webp';
@@ -38,7 +38,7 @@ function HeroSlideshow() {
     <>
       <div className="dash-hero__slides" aria-hidden="true">
         {HERO_SLIDES.map((src, i) => (
-          <img key={src} src={src} alt="" className={`dash-hero__slide dash-hero__slide--${i + 1} ${i === index ? 'is-active' : ''}`} loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+          <img key={src} src={src} alt="" className={`dash-hero__slide dash-hero__slide--${i + 1} ${i === index ? 'is-active' : ''}`} loading="eager" fetchPriority={i === 0 ? 'high' : 'auto'} decoding="async" />
         ))}
       </div>
       <div className="dash-hero__dots" role="group" aria-label="Campaign images" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
@@ -59,38 +59,126 @@ const POST_STATUS = {
 };
 const FILTERS = ['all', 'pending', 'approved', 'published', 'draft'];
 
-const ACTIVITY_TYPES = {
-  content_generation: { icon: Sparkles, key: 'dashboard.generatedContent' },
-  image_generation: { icon: ImageIcon, key: 'dashboard.imageProject' },
-  scheduled_post: { icon: CalendarClock, key: 'dashboard.scheduledPost' },
-  competitive_analysis: { icon: LineChart, key: 'dashboard.typeAnalysis' },
-  market_insights: { icon: TrendingUp, key: 'dashboard.typeInsights' },
-  auto_reply: { icon: Bot, key: 'dashboard.typeAutoReply' },
-};
+const ANALYTICS_PLATFORMS = ['facebook', 'instagram', 'linkedin', 'tiktok'];
+const ACTIVITY_RING_R = 19;
+const ACTIVITY_RING_C = 2 * Math.PI * ACTIVITY_RING_R;
 
-// Brand shortcut cards (the dashboard's one gradient moment besides the hero).
-const TOOLS = [
-  { key: 'create', to: '/create', icon: PenLine },
-  { key: 'planner', to: '/calendar', icon: CalendarDays },
-  { key: 'schedule', to: '/scheduler', icon: CalendarClock },
-  { key: 'channels', to: '/channels', icon: Users },
-];
+function WeeklyInsights({ posts, activity, accounts, loading }) {
+  const now = Date.now();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const start = now - week;
+  const previousStart = now - 2 * week;
+  const createdAt = (item) => parseUtc(item.created_at)?.getTime() ?? null;
+  const recentPosts = posts.filter((post) => {
+    const date = createdAt(post);
+    return date !== null && date >= start && date <= now;
+  });
+  const previousPosts = posts.filter((post) => {
+    const date = createdAt(post);
+    return date !== null && date >= previousStart && date < start;
+  });
+  const recentContent = activity.filter((item) => {
+    const date = createdAt(item);
+    return ['content_generation', 'image_generation'].includes(item.type) && date !== null && date >= start && date <= now;
+  }).length;
+  const platformCounts = Object.fromEntries(ANALYTICS_PLATFORMS.map((platform) => [
+    platform,
+    recentPosts.reduce((count, post) => count + ((post.platforms || []).includes(platform) ? 1 : 0), 0),
+  ]));
+  const maxPlatformCount = Math.max(1, ...Object.values(platformCounts));
+  const linked = new Set(accounts.filter((account) => account.connected).map((account) => account.platform));
+  const growth = previousPosts.length
+    ? Math.round(((recentPosts.length - previousPosts.length) / previousPosts.length) * 100)
+    : null;
+  const GrowthIcon = growth === null ? Minus : growth >= 0 ? ArrowUpRight : ArrowDownRight;
+  const growthText = growth === null
+    ? (recentPosts.length ? 'New activity' : 'No change yet')
+    : `${growth > 0 ? '+' : ''}${growth}%`;
 
-function ToolCards() {
-  const { t } = useLanguage();
   return (
-    <nav className="dash-tools" aria-label={t('tools.label')}>
-      {TOOLS.map(({ key, to, icon: Icon }) => (
-        <Link key={key} to={to} className={`dash-tool dash-tool--${key}`}>
-          <span className="dash-tool__icon"><Icon size={22} aria-hidden="true" /></span>
-          <span className="dash-tool__text">
-            <span className="dash-tool__title">{t(`tools.${key}Title`)}</span>
-            <span className="dash-tool__desc">{t(`tools.${key}Desc`)}</span>
-          </span>
-          <ArrowRight className="dash-tool__arrow" size={18} aria-hidden="true" />
-        </Link>
-      ))}
-    </nav>
+    <section className="dash-insights" aria-labelledby="dash-insights-title">
+      <div className="dash-insights__heading">
+        <div>
+          <p className="dash-insights__eyebrow">Your workspace at a glance</p>
+          <h2 id="dash-insights-title">Weekly progress</h2>
+          <p className="dash-insights__sub">Activity from the last 7 days, based on your workspace data.</p>
+        </div>
+        <span className="dash-insights__spark" aria-hidden="true"><TrendingUp size={19} /></span>
+      </div>
+
+      <div className="dash-insights__stats" aria-live="polite">
+        <article className="dash-insight-stat dash-insight-stat--posts">
+          <span className="dash-insight-stat__label">Posts created</span>
+          <strong>{loading ? '—' : recentPosts.length}</strong>
+          <span className="dash-insight-stat__note">this week</span>
+        </article>
+        <article className="dash-insight-stat dash-insight-stat--content">
+          <span className="dash-insight-stat__label">AI generations</span>
+          <strong>{loading ? '—' : recentContent}</strong>
+          <span className="dash-insight-stat__note">captions and images</span>
+        </article>
+        <article className="dash-insight-stat dash-insight-stat--growth">
+          <span className="dash-insight-stat__label">Posting growth</span>
+          <strong className={`dash-insight-stat__value ${loading ? 'is-neutral' : growth < 0 ? 'is-negative' : growth > 0 ? 'is-positive' : 'is-neutral'}`}>
+            <GrowthIcon size={21} aria-hidden="true" />{loading ? '—' : growthText}
+          </strong>
+          <span className="dash-insight-stat__note">compared with the previous 7 days</span>
+        </article>
+      </div>
+
+      <div className="dash-insights__platforms">
+        <div className="dash-insights__platform-heading">
+          <h3>Platform activity</h3>
+          <span>Relative activity · last 7 days</span>
+        </div>
+        <div className="dash-platform-grid">
+          {ANALYTICS_PLATFORMS.map((platform) => {
+            const Icon = BRAND[platform];
+            const count = platformCounts[platform];
+            const progress = (count / maxPlatformCount) * 100;
+            const gradientId = `activity-${platform}-gradient`;
+            return (
+              <article className={`dash-platform dash-platform--${platform}`} key={platform}>
+                <div className="dash-platform__top">
+                  <span className="dash-platform__identity">
+                    <span className="dash-platform__icon"><Icon aria-hidden="true" /></span>
+                    <span className="dash-platform__name">{platformLabel(platform)}</span>
+                  </span>
+                  <span className={`dash-platform__state ${linked.has(platform) ? 'is-connected' : 'is-disconnected'}`}>
+                    {linked.has(platform) ? 'Connected' : 'Not connected'}
+                  </span>
+                </div>
+                <div className="dash-platform__activity">
+                  <div className="dash-platform__ring" role="img" aria-label={`${platformLabel(platform)}: ${count} posts this week`}>
+                    <svg viewBox="0 0 48 48" aria-hidden="true">
+                      <defs>
+                        <linearGradient id={gradientId} x1="0" y1="1" x2="1" y2="0">
+                          <stop offset="0%" stopColor="var(--accent-2)" />
+                          <stop offset="100%" stopColor="var(--sidebar-accent)" />
+                        </linearGradient>
+                      </defs>
+                      <circle className="dash-platform__ring-track" cx="24" cy="24" r={ACTIVITY_RING_R} />
+                      <circle
+                        className="dash-platform__ring-value"
+                        cx="24"
+                        cy="24"
+                        r={ACTIVITY_RING_R}
+                        style={{ '--activity-gradient': `url(#${gradientId})`, '--ring-c': ACTIVITY_RING_C, '--ring-offset': ACTIVITY_RING_C * (1 - progress / 100) }}
+                      />
+                    </svg>
+                    <strong aria-hidden="true">{loading ? '—' : count}</strong>
+                  </div>
+                  <div className="dash-platform__activity-copy">
+                    <strong>{count === 1 ? 'post' : 'posts'}</strong>
+                    <span>{progress ? `${Math.round(progress)}% of platform peak` : 'No posts this week'}</span>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -195,55 +283,6 @@ function UpcomingCard({ posts, allPosts, loading }) {
   );
 }
 
-function WeekPlanner({ posts, loading }) {
-  const { t, language } = useLanguage();
-  const today = new Date();
-  const start = startOfWeek(today);
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const day = new Date(start);
-    day.setDate(start.getDate() + i);
-    return day;
-  });
-  const end = new Date(days[6]);
-  const range = `${start.toLocaleDateString(language, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(language, { month: 'short', day: 'numeric' })}`;
-
-  return (
-    <Card as="section" className="dash-card dash-card--blue" aria-labelledby="dash-week-title">
-      <CardHeader id="dash-week-title" icon={CalendarDays} title={t('dashboard.weeklyPlanner') || 'Week Planner'} subtitle={range} />
-      {loading ? <Skeleton height={72} /> : (
-        <ol className="dash-week">
-          {days.map((day) => {
-            const items = posts.filter((p) => {
-              const at = parseUtc(p.scheduled_at);
-              return at && isSameLocalDay(at, day);
-            });
-            const isToday = isSameLocalDay(day, today);
-            return (
-              <li
-                key={day.toISOString()}
-                className={`dash-day ${isToday ? 'is-today' : ''}`}
-                aria-current={isToday ? 'date' : undefined}
-                aria-label={`${day.toLocaleDateString(language, { weekday: 'long', month: 'long', day: 'numeric' })}: ${items.length}`}
-              >
-                <span className="dash-day__name" aria-hidden="true">{day.toLocaleDateString(language, { weekday: 'short' })}</span>
-                <span className="dash-day__num" aria-hidden="true">{day.getDate()}</span>
-                <span className="dash-day__dots" aria-hidden="true">
-                  {items.slice(0, 3).map((p) => <i key={p.id} className={`dash-dot dash-dot--${['published', 'failed'].includes(p.status) ? p.status : 'pending'}`} />)}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      <ul className="dash-legend">
-        <li><i className="dash-dot dash-dot--published" aria-hidden="true" />{t('dashboard.statusPublished') || 'Published'}</li>
-        <li><i className="dash-dot dash-dot--pending" aria-hidden="true" />{t('dashboard.scheduledStatus') || 'Scheduled'}</li>
-        <li><i className="dash-dot dash-dot--failed" aria-hidden="true" />{t('dashboard.statusFailed') || 'Failed'}</li>
-      </ul>
-    </Card>
-  );
-}
-
 const BRAND = {
   facebook: FaFacebookF,
   instagram: FaInstagram,
@@ -265,7 +304,7 @@ function ChannelsCard({ accounts, loading, onConnect, onDisconnect }) {
         id="dash-channels-title"
         icon={Share2}
         title={t('dashboard.channelsLabel') || 'Connected Channels'}
-        action={<Button as={Link} to="/channels" variant="secondary">Manage</Button>}
+        action={<Button as={Link} to="/profile#business-profile" variant="secondary">Manage</Button>}
       />
       {loading ? <ListSkeleton rows={4} /> : (
         <>
@@ -438,21 +477,16 @@ export default function Dashboard({ user, onLogout }) {
             <p className="dash-hero__sub">{t('dashboard.todaySubtitle')}</p>
           </section>
 
-          <ToolCards />
+          <WeeklyInsights posts={posts} activity={activity} accounts={safeAccounts} loading={workspaceLoading || loading} />
 
           <div className="dash-layout">
-            <div className="dash-col">
-              <UpcomingCard posts={upcoming} allPosts={posts} loading={workspaceLoading} />
-              <WeekPlanner posts={posts} loading={workspaceLoading} />
-            </div>
-            <div className="dash-col">
-              <ChannelsCard
-                accounts={safeAccounts}
-                loading={loading}
-                onConnect={handleConnect}
-                onDisconnect={handleDisconnect}
-              />
-            </div>
+            <UpcomingCard posts={upcoming} allPosts={posts} loading={workspaceLoading} />
+            <ChannelsCard
+              accounts={safeAccounts}
+              loading={loading}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+            />
           </div>
         </div>
       </WorkspaceShell>

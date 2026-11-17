@@ -1,77 +1,53 @@
-# Environment variables
+# Local environment files and secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
-# Python
+# Python environments and caches
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 venv/
 env/
 ENV/
-.venv
+.venv/
 
-# Node
+# Node dependencies and generated builds
 node_modules/
-npm-debug.log
-yarn-error.log
 dist/
 build/
+coverage/
 
-# Databases
+# Databases and local uploads
 *.db
 *.sqlite
 *.sqlite3
+backend/media_uploads/*
+!backend/media_uploads/.gitkeep
+backend/static/uploads/
 
-# IDE
+# Logs and transient diagnostics
+*.log
+*.err
+*.timestamp-*.mjs
+
+# IDE and operating system files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
-
-# Logs
-logs/
-*.log
-
-# Media uploads (if it contains sensitive/user data)
-backend/media_uploads/*
-!backend/media_uploads/.gitkeep
-
-# OS
 Thumbs.db
 
-# Firebase service-account keys (full database access: never commit)
+# Firebase service-account keys
 backend/firebase-service-account*.json
 *-firebase-adminsdk-*.json
 
-# OAuth access tokens for connected social accounts (never commit)
+# OAuth tokens for connected social accounts
 backend/connected_accounts.json
-
-# Server logs and error dumps (may contain request data)
-*.err
-server.log
-backend/*.log
-backend/brandora.db
-brandora.db
-backend/static/uploads/
-*.timestamp-*.mjs
